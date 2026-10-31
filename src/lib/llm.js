@@ -1,3 +1,5 @@
+import { endpoint, unreachable } from './services'
+
 export const LLM_PROVIDERS = {
   claude: { label: 'Claude', needsKey: true, keyUrl: 'https://console.anthropic.com/settings/keys', keyName: 'Anthropic API key' },
   groq: { label: 'Groq', needsKey: true, keyUrl: 'https://console.groq.com/keys', keyName: 'Groq API key (free tier)' },
@@ -32,13 +34,13 @@ export async function readError(res) {
   return `${res.status}: ${text.slice(0, 220) || res.statusText}`
 }
 
-async function post(url, headers, body, signal) {
+async function post(service, path, headers, body, signal) {
   let res
   try {
-    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body), signal })
+    res = await fetch(endpoint(service, path), { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body), signal })
   } catch (e) {
     if (e.name === 'AbortError') throw e
-    throw new Error('Could not reach the model. Is the dev server running (npm run dev)?')
+    throw new Error(unreachable(service))
   }
   if (!res.ok) throw new Error(await readError(res))
   return res.json()
@@ -54,7 +56,8 @@ export async function complete({ provider, apiKey, model, system, prompt, signal
   switch (provider) {
     case 'claude': {
       const data = await post(
-        '/proxy/anthropic/v1/messages',
+        'anthropic',
+        '/v1/messages',
         { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
         { model, max_tokens: maxTokens, temperature: 0.9, system, messages: [{ role: 'user', content: prompt }] },
         signal,
@@ -63,7 +66,8 @@ export async function complete({ provider, apiKey, model, system, prompt, signal
     }
     case 'groq': {
       const data = await post(
-        '/proxy/groq/openai/v1/chat/completions',
+        'groq',
+        '/openai/v1/chat/completions',
         { Authorization: `Bearer ${apiKey}` },
         {
           model,
@@ -81,7 +85,8 @@ export async function complete({ provider, apiKey, model, system, prompt, signal
     }
     case 'gemini': {
       const data = await post(
-        `/proxy/gemini/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        'gemini',
+        `/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
         {},
         {
           systemInstruction: { parts: [{ text: system }] },
@@ -94,7 +99,8 @@ export async function complete({ provider, apiKey, model, system, prompt, signal
     }
     case 'ollama': {
       const data = await post(
-        '/proxy/ollama/api/chat',
+        'ollama',
+        '/api/chat',
         {},
         {
           model,
@@ -109,14 +115,14 @@ export async function complete({ provider, apiKey, model, system, prompt, signal
         signal,
       ).catch((e) => {
         if (e.name === 'AbortError') throw e
-        throw new Error(`Ollama: ${e.message}. Make sure Ollama is running and "${model}" is pulled (ollama pull ${model}).`)
+        throw new Error(`${e.message} Make sure Ollama is running and "${model}" is pulled (ollama pull ${model}).`)
       })
       return data.message?.content || ''
     }
     case 'chatjimmy': {
       let res
       try {
-        res = await fetch('/proxy/chatjimmy/api/chat', {
+        res = await fetch(endpoint('chatjimmy', '/api/chat'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -131,7 +137,7 @@ export async function complete({ provider, apiKey, model, system, prompt, signal
         })
       } catch (e) {
         if (e.name === 'AbortError') throw e
-        throw new Error('Could not reach ChatJimmy. Is the dev server running (npm run dev)?')
+        throw new Error(unreachable('chatjimmy'))
       }
       if (!res.ok) throw new Error(`ChatJimmy ${await readError(res)}`)
       return cleanJimmy(await res.text())

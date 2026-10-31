@@ -11,7 +11,14 @@ npm run dev
 
 Open http://localhost:5173, click the gear icon, and add a key for the model you want. Type a topic (or tap an example) and press **Start meeting**.
 
-All API calls go through Vite's local proxy (see `vite.config.js`). That avoids browser CORS limits, so always run it with `npm run dev` or `npm run build && npm run preview`. Opening `dist/index.html` directly or hosting it as a static site will not reach the APIs.
+### Connection: proxy or direct
+
+Settings has one **Connection** switch for every provider:
+
+- **Proxy (default):** calls go through Vite's local server (`npm run dev` or `npm run build && npm run preview`). This avoids browser CORS blocks for every provider.
+- **Direct from browser:** the browser calls each API itself, so a static build (`dist/`) works on any host. Some providers refuse calls from web pages (CORS). If you see a "couldn't reach" error, switch back to Proxy. For Ollama, start it with `OLLAMA_ORIGINS="*"`.
+
+The server addresses live in one file, `src/lib/services.js`, which both modes read.
 
 ## Conversation models
 
@@ -51,6 +58,21 @@ ElevenLabs comes with a default premade voice ID for each person, and you can ch
 - **Joining in:** sending a message stops the current speaker and cancels anything prepared. The most relevant teammate answers you next. This works whether the meeting is running or paused.
 - **Controls:** you can pause the meeting, step one line at a time, or end it. **Copy** in Minutes puts the full transcript on your clipboard.
 
+## Prompts
+
+Settings has a **Prompts** section where every piece of text sent to the model is editable:
+- The main system prompt, and how each team member is described.
+- The free-flow and mediator rules, and how people talk.
+- The reply formats, for one line and for several lines per call.
+- The request message and transcript lines.
+- The meeting moments: opening, after you jump in, mediator stepping back in, nearly out of time, closing, and the middle of the meeting.
+
+Each part lists the placeholders it accepts, such as `{topic}`, `{host}`, `{team}` and `{lineCount}`. Parts you've changed are marked "edited", and each can be reset on its own. A preview shows the fully assembled prompt for the current team. If you edit the reply format, keep a `speaker` (the person's name) and `text`, or `Name: line` text, so replies can still be read.
+
+## People are identified by name
+
+There are no fixed IDs. Each person's name identifies them in prompts, model replies, the transcript, seating and the mediator choice. Names must therefore be unique and can't be "You", and Settings warns you if they aren't. Renaming the mediator keeps them as mediator.
+
 ## Project layout
 
 ```
@@ -60,7 +82,9 @@ src/
   lib/tts.js             ElevenLabs, Fish Audio, Kokoro, browser speech, lip-sync amplitude
   lib/kokoro.js          Kokoro client: voice list, download progress, requests to the worker
   lib/kokoro.worker.js   runs kokoro-js (ONNX) off the main thread
-  lib/engine.js          meeting loop: prompting, turn-taking, interruptions, prefetch
+  lib/engine.js          meeting loop: turn-taking, reply parsing, interruptions, prefetch
+  lib/prompts.js         every prompt template and how they're assembled
+  lib/services.js        API server addresses and the proxy/direct switch
   lib/settings.js        settings saved in localStorage
   scene/OfficeScene.jsx  canvas, lights, camera, seating
   scene/Office.jsx       room, furniture, plants, whiteboard showing the topic

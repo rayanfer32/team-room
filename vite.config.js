@@ -1,8 +1,9 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { SERVICES } from './src/lib/services.js'
 
-// Every API call goes through this local proxy, so the browser never hits
-// CORS limits and your keys only travel between your machine and the provider.
+// In Proxy mode every API call goes through this local dev server, so the browser
+// never hits CORS limits. Direct mode skips it (Settings → Connection).
 function proxies(env) {
   const route = (target, prefix) => ({
     target,
@@ -16,15 +17,13 @@ function proxies(env) {
       })
     },
   })
-  return {
-    '/proxy/anthropic': route('https://api.anthropic.com', '/proxy/anthropic'),
-    '/proxy/groq': route('https://api.groq.com', '/proxy/groq'),
-    '/proxy/gemini': route('https://generativelanguage.googleapis.com', '/proxy/gemini'),
-    '/proxy/ollama': route(env.OLLAMA_URL || 'http://127.0.0.1:11434', '/proxy/ollama'),
-    '/proxy/elevenlabs': route('https://api.elevenlabs.io', '/proxy/elevenlabs'),
-    '/proxy/fish': route('https://api.fish.audio', '/proxy/fish'),
-    '/proxy/chatjimmy': route('https://chatjimmy.ai', '/proxy/chatjimmy'),
-  }
+  const table = Object.fromEntries(
+    Object.entries(SERVICES).map(([name, svc]) => {
+      const target = name === 'ollama' ? env.OLLAMA_URL || svc.url : svc.url
+      return [`/proxy/${name}`, route(target, `/proxy/${name}`)]
+    }),
+  )
+  return table
 }
 
 export default defineConfig(({ mode }) => {
@@ -32,6 +31,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     worker: { format: 'es' },
+    define: { __OLLAMA_URL__: JSON.stringify(env.OLLAMA_URL || '') },
     // Pre-bundle Kokoro up front so the dev server doesn't reload the page
     // the first time the voice worker starts.
     optimizeDeps: { include: ['kokoro-js'] },

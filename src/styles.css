@@ -185,6 +185,17 @@ textarea:focus, input:focus, select:focus { border-color: var(--marigold); outli
 .checks { display: flex; flex-direction: column; gap: 6px; justify-content: center; font-size: 14px; }
 .checks input { accent-color: var(--marigold); margin-right: 6px; }
 .btn.danger { color: var(--rose); }
+.prompt-group h4, .prompt-body h4 { font-size: 13px; font-weight: 600; color: var(--sage); margin: 14px 0 6px; text-transform: none; }
+.prompt { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; }
+.prompt summary { display: flex; justify-content: space-between; gap: 10px; padding: 9px 12px; cursor: pointer; list-style: none; font-size: 14px; }
+.prompt summary::-webkit-details-marker { display: none; }
+.prompt[open] summary { border-bottom: 1px solid var(--line); }
+.prompt .edited { font-size: 11px; color: var(--marigold-ink); background: var(--marigold); border-radius: 999px; padding: 1px 8px; align-self: center; }
+.prompt-body { padding: 10px 12px 12px; }
+.prompt-body textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.5; }
+.prompt-body .vars code { margin-right: 4px; }
+.prompt-body pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.5; background: rgba(0, 0, 0, 0.3); padding: 10px; border-radius: 8px; max-height: 320px; overflow: auto; margin: 0; }
+.prompts > .btn { margin-top: 8px; }
 .segmented button {
   flex: 1 1 auto; border: 0; background: transparent; padding: 7px 6px; border-radius: 999px;
   cursor: pointer; color: var(--sage); font-size: 14px; font-weight: 500;

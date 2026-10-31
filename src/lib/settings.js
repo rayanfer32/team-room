@@ -1,4 +1,5 @@
 import { DEFAULT_PERSONAS, MAX_TEAM, MIN_TEAM, newPersona } from '../data/personas'
+import { DEFAULT_PROMPTS } from './prompts'
 
 const KEY = 'team-room-settings-v1'
 
@@ -25,18 +26,22 @@ export const DEFAULT_SETTINGS = {
   maxTurns: 24,
   conversation: {
     mode: 'freeflow', // 'freeflow' | 'mediator'
-    mediatorId: '', // empty = whoever has a manager/lead role
+    mediator: '', // a person's name; empty = whoever has a manager/lead role
     batchSize: 1, // lines written per API call
   },
   personas: DEFAULT_PERSONAS,
+  prompts: DEFAULT_PROMPTS,
+  connection: 'proxy', // 'proxy' (through the dev server) | 'direct' (browser calls each API)
 }
 
 const clone = (o) => JSON.parse(JSON.stringify(o))
 
 /** Fill in any fields an older saved persona is missing. */
-function mergePersona(p) {
-  const base = DEFAULT_PERSONAS.find((d) => d.id === p.id) || newPersona()
-  return { ...base, ...p, id: p.id || base.id, look: { ...base.look, ...p.look }, voice: { ...base.voice, ...p.voice } }
+function mergePersona(saved, i) {
+  // eslint-disable-next-line no-unused-vars
+  const { id, ...p } = saved // older versions stored a fixed id; names identify people now
+  const base = DEFAULT_PERSONAS.find((d) => d.name === p.name) || DEFAULT_PERSONAS[i] || newPersona()
+  return { ...base, ...p, name: p.name ?? base.name, look: { ...base.look, ...p.look }, voice: { ...base.voice, ...p.voice } }
 }
 
 export function loadSettings() {
@@ -56,9 +61,11 @@ export function loadSettings() {
       },
       tts: { ...d.tts, ...s.tts },
       conversation: { ...d.conversation, ...s.conversation },
+      prompts: { ...d.prompts, ...s.prompts },
+      connection: s.connection === 'direct' ? 'direct' : 'proxy',
       personas:
         Array.isArray(s.personas) && s.personas.length >= MIN_TEAM && s.personas.length <= MAX_TEAM
-          ? s.personas.map((p) => mergePersona(p))
+          ? s.personas.map((p, i) => mergePersona(p, i))
           : clone(d.personas),
     }
   } catch {
@@ -75,3 +82,4 @@ export function saveSettings(s) {
 }
 
 export const defaultPersonas = () => clone(DEFAULT_PERSONAS)
+export const defaultPrompts = () => clone(DEFAULT_PROMPTS)

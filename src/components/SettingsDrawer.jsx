@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { LLM_PROVIDERS } from '../lib/llm'
 import { TTS_PROVIDERS } from '../lib/tts'
-import { defaultPersonas } from '../lib/settings'
+import { defaultPersonas, defaultPrompts } from '../lib/settings'
+import { DEFAULT_PROMPTS, PROMPT_PARTS, buildPrompt } from '../lib/prompts'
 import { MAX_TEAM, MIN_TEAM, newPersona } from '../data/personas'
-import { findManager } from '../lib/engine'
+import { findManager, hostOf, teamProblem } from '../lib/engine'
 import { kokoro, KOKORO_VOICES, resolveDevice } from '../lib/kokoro'
 
 function Segmented({ value, options, onChange, label }) {
@@ -209,7 +210,75 @@ function KokoroSettings({ device, onDevice }) {
   )
 }
 
-export default function SettingsDrawer({ open, onClose, settings, setSettings, engine, running }) {
+function PromptEditor({ prompts, onChange, onResetAll, preview }) {
+  const groups = [...new Set(PROMPT_PARTS.map((p) => p.group))]
+  return (
+    <div className="prompts">
+      {groups.map((g) => (
+        <div key={g} className="prompt-group">
+          <h4>{g}</h4>
+          {PROMPT_PARTS.filter((p) => p.group === g).map((part) => {
+            const value = prompts[part.key] ?? DEFAULT_PROMPTS[part.key]
+            const changed = value !== DEFAULT_PROMPTS[part.key]
+            return (
+              <details key={part.key} className="prompt">
+                <summary>
+                  <span>{part.label}</span>
+                  {changed && <span className="edited">edited</span>}
+                </summary>
+                <div className="prompt-body">
+                  <textarea
+                    rows={Math.min(14, Math.max(2, value.split('\n').length + 1))}
+                    value={value}
+                    spellCheck={false}
+                    onChange={(e) => onChange(part.key, e.target.value)}
+                    aria-label={part.label}
+                  />
+                  {part.vars.length > 0 && (
+                    <p className="fine vars">
+                      Placeholders:{' '}
+                      {part.vars.map((v) => (
+                        <code key={v}>{`{${v}}`}</code>
+                      ))}
+                    </p>
+                  )}
+                  {part.warn && (
+                    <p className="fine">
+                      The app reads JSON with a <code>speaker</code> (the person's name) and <code>text</code>, or plain <code>Name: line</code> text. Keep one of
+                      those shapes or lines won't be understood.
+                    </p>
+                  )}
+                  {changed && (
+                    <button className="link" onClick={() => onChange(part.key, DEFAULT_PROMPTS[part.key])}>
+                      Reset this part
+                    </button>
+                  )}
+                </div>
+              </details>
+            )
+          })}
+        </div>
+      ))}
+      <details className="prompt preview">
+        <summary>
+          <span>Preview the assembled prompt</span>
+        </summary>
+        <div className="prompt-body">
+          <p className="fine">What the model receives for the first line of a meeting with the current team and settings.</p>
+          <h4>System</h4>
+          <pre>{preview.system}</pre>
+          <h4>Request</h4>
+          <pre>{preview.prompt}</pre>
+        </div>
+      </details>
+      <button className="btn ghost" onClick={onResetAll}>
+        Reset all prompts
+      </button>
+    </div>
+  )
+}
+
+export default function SettingsDrawer({ open, onClose, settings, setSettings, engine, running, topic }) {
   const closeRef = useRef(null)
   const [voices, setVoices] = useState([])
 
@@ -247,6 +316,27 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
             Done
           </button>
         </header>
+
+        <section>
+          <h3>Connection</h3>
+          <Segmented
+            label="Connection"
+            value={settings.connection}
+            options={[
+              ['proxy', 'Proxy (dev server)'],
+              ['direct', 'Direct from browser'],
+            ]}
+            onChange={(v) => {
+              touchVoices()
+              update((s) => (s.connection = v))
+            }}
+          />
+          <p className="fine">
+            {settings.connection === 'proxy'
+              ? 'Calls go through the local Vite server (npm run dev or npm run preview), which avoids browser CORS blocks for every provider.'
+              : 'The browser calls each API itself, so it also works as a static site. Some providers block direct browser calls (CORS). If you see a "couldn’t reach" error, switch back to Proxy. Ollama needs OLLAMA_ORIGINS="*" in this mode.'}
+          </p>
+        </section>
 
         <section>
           <h3>Conversation model</h3>
@@ -378,10 +468,10 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
               : 'Anyone jumps in when the discussion calls for them.'}
           </p>
           <Field label={settings.conversation.mode === 'mediator' ? 'Mediator' : 'Opens and closes the meeting'}>
-            <select value={settings.conversation.mediatorId} onChange={(e) => update((s) => (s.conversation.mediatorId = e.target.value))}>
+            <select value={settings.conversation.mediator} onChange={(e) => update((s) => (s.conversation.mediator = e.target.value))}>
               <option value="">Automatic ({findManager(settings.personas).name})</option>
-              {settings.personas.map((p) => (
-                <option key={p.id} value={p.id}>
+              {settings.personas.map((p, i) => (
+                <option key={i} value={p.name}>
                   {p.name}, {p.role}
                 </option>
               ))}
@@ -396,6 +486,26 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
         </section>
 
         <section>
+          <h3>Prompts</h3>
+          <p className="fine">Every piece of text sent to the model. Placeholders in braces are filled in for each request.</p>
+          <PromptEditor
+            prompts={settings.prompts}
+            onChange={(key, value) => update((s) => (s.prompts[key] = value))}
+            onResetAll={() => update((s) => (s.prompts = defaultPrompts()))}
+            preview={buildPrompt({
+              prompts: settings.prompts,
+              personas: settings.personas,
+              topic: topic?.trim() || 'your topic',
+              transcript: [],
+              phases: [{ key: 'opening', lineRef: settings.conversation.batchSize > 1 ? 'Line 1' : 'This line' }],
+              mode: settings.conversation.mode,
+              host: hostOf(settings),
+              count: settings.conversation.batchSize,
+            })}
+          />
+        </section>
+
+        <section>
           <h3>Meeting length</h3>
           <Field label={`${settings.maxTurns} lines before the manager wraps up`}>
             <input type="range" min="8" max="60" step="1" value={settings.maxTurns} onChange={(e) => update((s) => (s.maxTurns = +e.target.value))} />
@@ -404,23 +514,35 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
 
         <section>
           <h3>Team</h3>
+          {teamProblem(settings.personas) && (
+            <p className="msg error" role="alert">
+              {teamProblem(settings.personas)}
+            </p>
+          )}
           <p className="fine">
-            {settings.personas.length} people at the table. Changes apply from the next line{running ? '; pause the meeting to add or remove people' : ''}.
+            {settings.personas.length} people at the table. Each person is identified by their name.
+            {' '} Changes apply from the next line{running ? '; pause the meeting to add or remove people' : ''}.
           </p>
           {settings.personas.map((p, i) => (
             <PersonaEditor
-              key={p.id}
+              key={i}
               persona={p}
               voices={voices}
               ttsProvider={tts.provider}
               testDisabled={running}
               onTest={(persona) => engine.testVoice(persona)}
-              onChange={(np) => update((s) => (s.personas[i] = np))}
+              onChange={(np) =>
+                update((s) => {
+                  // Names identify people, so keep the mediator choice pointing at the renamed person.
+                  if (s.conversation.mediator && s.conversation.mediator === s.personas[i].name) s.conversation.mediator = np.name
+                  s.personas[i] = np
+                })
+              }
               canRemove={!running && settings.personas.length > MIN_TEAM}
               onRemove={() =>
                 update((s) => {
                   s.personas.splice(i, 1)
-                  if (s.conversation.mediatorId === p.id) s.conversation.mediatorId = ''
+                  if (s.conversation.mediator === p.name) s.conversation.mediator = ''
                 })
               }
             />

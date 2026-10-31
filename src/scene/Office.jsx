@@ -586,7 +586,7 @@ export function MeetingTable({ seatsList, radius = 1.6 }) {
         const lr = radius - 0.45
         const mr = radius - 0.4
         return (
-          <group key={s.id}>
+          <group key={`${i}-${s.name}`}>
             <group position={[Math.sin(a) * lr, top, Math.cos(a) * lr]} rotation={[0, s.rot, 0]}>
               {i % 2 === 0 ? (
                 <Laptop color={i === 0 ? '#d8d2c6' : '#9aa0a6'} glow={['#bfe3d6', '#f2d8a7', '#c8d7f2'][i % 3]} />

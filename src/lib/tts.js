@@ -1,5 +1,15 @@
 import { readError } from './llm'
 import { kokoro } from './kokoro'
+import { endpoint, unreachable } from './services'
+
+async function send(service, path, init) {
+  try {
+    return await fetch(endpoint(service, path), init)
+  } catch (e) {
+    if (e.name === 'AbortError') throw e
+    throw new Error(unreachable(service))
+  }
+}
 
 export const TTS_PROVIDERS = {
   elevenlabs: { label: 'ElevenLabs', keyUrl: 'https://elevenlabs.io/app/settings/api-keys' },
@@ -13,7 +23,7 @@ const MALE = /(^|[^e])male|daniel|alex|fred|david|mark|george|rishi|guy|ryan|tho
 
 async function elevenLabs(text, persona, tts, signal) {
   const voiceId = persona.voice?.elevenlabs?.trim() || '21m00Tcm4TlvDq8ikWAM'
-  const res = await fetch(`/proxy/elevenlabs/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
+  const res = await send('elevenlabs', `/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
     method: 'POST',
     headers: { 'xi-api-key': tts.elevenKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
     body: JSON.stringify({
@@ -30,7 +40,7 @@ async function elevenLabs(text, persona, tts, signal) {
 async function fishAudio(text, persona, tts, signal) {
   const body = { text, format: 'mp3', normalize: true, latency: 'balanced' }
   if (persona.voice?.fish?.trim()) body.reference_id = persona.voice.fish.trim()
-  const res = await fetch('/proxy/fish/v1/tts', {
+  const res = await send('fish', '/v1/tts', {
     method: 'POST',
     headers: { Authorization: `Bearer ${tts.fishKey}`, 'Content-Type': 'application/json', model: tts.fishModel || 's1' },
     body: JSON.stringify(body),

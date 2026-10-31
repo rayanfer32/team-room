@@ -1,7 +1,7 @@
 // Default team. Everything here is editable in Settings → Team.
+// Each person is identified by their name, so names must be unique.
 export const DEFAULT_PERSONAS = [
   {
-    id: 'priya',
     name: 'Priya',
     role: 'Product Owner',
     gender: 'female',
@@ -11,7 +11,6 @@ export const DEFAULT_PERSONAS = [
     voice: { elevenlabs: '21m00Tcm4TlvDq8ikWAM', fish: '', kokoro: 'af_heart', browserVoice: '', pitch: 1.12, rate: 1.03 },
   },
   {
-    id: 'arjun',
     name: 'Arjun',
     role: 'Developer',
     gender: 'male',
@@ -21,7 +20,6 @@ export const DEFAULT_PERSONAS = [
     voice: { elevenlabs: 'TxGEqnHWrfWFTfGW9XjX', fish: '', kokoro: 'am_michael', browserVoice: '', pitch: 0.95, rate: 1.06 },
   },
   {
-    id: 'meera',
     name: 'Meera',
     role: 'Tester (QA)',
     gender: 'female',
@@ -31,7 +29,6 @@ export const DEFAULT_PERSONAS = [
     voice: { elevenlabs: 'MF3mGyEYCl7XYWbV9V6O', fish: '', kokoro: 'af_bella', browserVoice: '', pitch: 1.0, rate: 1.0 },
   },
   {
-    id: 'vikram',
     name: 'Vikram',
     role: 'Architect',
     gender: 'male',
@@ -41,7 +38,6 @@ export const DEFAULT_PERSONAS = [
     voice: { elevenlabs: 'pNInz6obpgDQGcFmaJgB', fish: '', kokoro: 'bm_george', browserVoice: '', pitch: 0.82, rate: 0.95 },
   },
   {
-    id: 'sarah',
     name: 'Sarah',
     role: 'Engineering Manager',
     gender: 'female',
@@ -75,7 +71,6 @@ export function newPersona(existing = []) {
   const gender = existing.filter((p) => p.gender === 'female').length > existing.length / 2 ? 'male' : 'female'
   const name = SPARE_NAMES.find((n) => !taken.has(n)) || `Teammate ${existing.length + 1}`
   return {
-    id: `p${Math.random().toString(36).slice(2, 8)}`,
     name,
     role: 'Team member',
     gender,

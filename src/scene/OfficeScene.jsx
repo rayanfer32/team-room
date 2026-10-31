@@ -22,24 +22,24 @@ function CameraFit({ count }) {
 }
 
 /** Seats around the table; the manager sits opposite the camera, facing it. */
-function useSeats(personas, managerId) {
+function useSeats(personas, hostName) {
   return useMemo(() => {
     const SEAT_RADIUS = tableRadius(personas.length) + 0.45
     const facing = Math.atan2(CAMERA[0], CAMERA[2]) + Math.PI
-    const mi = Math.max(0, personas.findIndex((p) => p.id === managerId))
+    const mi = Math.max(0, personas.findIndex((p) => p.name === hostName))
     const list = personas.map((p, i) => {
       const angle = facing + ((i - mi) * Math.PI * 2) / personas.length
       const x = Math.sin(angle) * SEAT_RADIUS
       const z = Math.cos(angle) * SEAT_RADIUS - 0.2
-      return { id: p.id, angle, x, z, rot: Math.atan2(-Math.sin(angle), -Math.cos(angle)) }
+      return { name: p.name, angle, x, z, rot: Math.atan2(-Math.sin(angle), -Math.cos(angle)) }
     })
-    const byId = Object.fromEntries(list.map((s) => [s.id, s]))
-    return { list, byId }
-  }, [personas, managerId])
+    const byName = Object.fromEntries(list.map((s) => [s.name, s]))
+    return { list, byName }
+  }, [personas, hostName])
 }
 
-export default function OfficeScene({ personas, managerId, live, speakingId, line, topic }) {
-  const seats = useSeats(personas, managerId)
+export default function OfficeScene({ personas, hostName, live, speaking, line, topic }) {
+  const seats = useSeats(personas, hostName)
   const tableR = tableRadius(personas.length)
   return (
     <Canvas shadows dpr={[1, 2]} camera={{ position: CAMERA, fov: 42, near: 0.1, far: 80 }} gl={{ antialias: true }}>
@@ -69,15 +69,15 @@ export default function OfficeScene({ personas, managerId, live, speakingId, lin
       <group position={[0, 0, -0.2]}>
         <MeetingTable seatsList={seats.list} radius={tableR} />
       </group>
-      {personas.map((p) => (
+      {personas.map((p, i) => (
         <Person
-          key={p.id}
+          key={`${i}-${p.name}`}
           persona={p}
-          seat={seats.byId[p.id]}
-          seats={seats.byId}
+          seat={seats.byName[p.name]}
+          seats={seats.byName}
           live={live}
-          speaking={speakingId === p.id}
-          line={speakingId === p.id ? line : null}
+          speaking={speaking === p.name}
+          line={speaking === p.name ? line : null}
         />
       ))}
 

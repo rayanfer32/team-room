@@ -1,64 +1,35 @@
 import { complete } from './llm'
 import { VoicePlayer } from './tts'
 import { kokoro } from './kokoro'
+import { buildPrompt } from './prompts'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const abortError = () => new DOMException('Aborted', 'AbortError')
 
 export const findManager = (personas) => personas.find((p) => /manager|lead|scrum|head/i.test(p.role)) || personas[0]
 
+/** People are identified by their names, so names must be present and unique. */
+export function teamProblem(personas) {
+  const seen = new Set()
+  for (const p of personas) {
+    const n = p.name.trim()
+    if (!n) return 'Every person needs a name.'
+    if (n.toLowerCase() === 'you') return '"You" is reserved for you, so pick another name.'
+    if (seen.has(n.toLowerCase())) return `Two people are called ${n}. Names must be unique, because they identify each person.`
+    seen.add(n.toLowerCase())
+  }
+  return null
+}
+
 /** The person who opens, closes and (in mediator mode) moderates the meeting. */
 export function hostOf(settings) {
-  const id = settings.conversation?.mediatorId
-  return settings.personas.find((p) => p.id === id) || findManager(settings.personas)
+  const name = settings.conversation?.mediator
+  return settings.personas.find((p) => p.name === name) || findManager(settings.personas)
 }
 
 export function voiceSlot(personas, persona) {
   const same = personas.filter((p) => p.gender === persona.gender)
-  return Math.max(0, same.findIndex((p) => p.id === persona.id))
-}
-
-/* ---------------- prompting ---------------- */
-
-function buildPrompt({ personas, topic, transcript, phases, mode, host, count }) {
-  const team = personas.map((p) => `- id "${p.id}": ${p.name}, ${p.role}. ${p.traits}`).join('\n')
-  const flow =
-    mode === 'mediator'
-      ? `Format: a moderated meeting. ${host.name} is the mediator. ${host.name} frames each question, invites a specific colleague by name, and after one or two answers summarises briefly or moves to the next point, making sure everyone is heard. Others speak only when invited, or to respond directly to the person who just spoke. ${host.name} speaks about every second or third line.`
-      : `Format: a free-flowing discussion. Anyone can jump in. Pick who speaks next by natural meeting flow: whoever was just addressed or asked a question, whoever's expertise matters most for the point on the table, or whoever would genuinely react. Don't pick the person who spoke last unless they were asked something directly. Over the meeting everyone should contribute.`
-  const format =
-    count === 1
-      ? 'Reply with only a JSON object and nothing else: {"speaker":"<id>","text":"<spoken words>"}'
-      : `Reply with only a JSON object and nothing else: {"lines":[{"speaker":"<id>","text":"<spoken words>"}, ...]} with exactly ${count} lines in speaking order. Consecutive lines should come from different people.`
-
-  const system = `You write a live, realistic meeting between ${personas.length} colleagues sitting around a table in a cozy office. Each line is spoken by exactly ONE person.
-
-The team:
-${team}
-
-Meeting topic: "${topic}"
-
-${flow}
-
-How they talk:
-- Each line is 1 to 3 short spoken sentences, under 55 words. It is read aloud: no markdown, lists, emojis, stage directions or name prefixes.
-- Stay in character and use colleagues' names now and then. Move the discussion forward: raise concrete risks, propose specific ideas, ask pointed questions, disagree respectfully, reach decisions.
-- Be concrete about the topic, like people who actually build this product. Don't repeat points already made.
-- "You" is a human stakeholder who joined the meeting. When You has just spoken, the most relevant person answers You directly.
-
-${format}`
-
-  const lines = transcript
-    .slice(-26)
-    .map((l) => `${l.name} (${l.role}): ${l.text}`)
-    .join('\n')
-  const ask = count === 1 ? 'Who speaks next, and what do they say? JSON only.' : `Write the next ${count} lines of the meeting. JSON only.`
-  const prompt = `${lines ? `Transcript so far:\n${lines}` : 'The meeting is just starting. Nobody has spoken yet.'}
-
-${phases.join('\n')}
-
-${ask}`
-  return { system, prompt }
+  return Math.max(0, same.findIndex((p) => p.name === persona.name))
 }
 
 /* ---------------- parsing ---------------- */
@@ -82,9 +53,9 @@ function resolvePersona(raw, personas) {
   const s = String(raw || '').toLowerCase().replace(/[*"]/g, '').trim()
   if (!s) return null
   return (
-    personas.find((p) => p.id === s) ||
     personas.find((p) => p.name.toLowerCase() === s) ||
-    personas.find((p) => s.includes(p.name.toLowerCase()) || s.includes(p.id)) ||
+    personas.find((p) => s.includes(p.name.toLowerCase())) ||
+    personas.find((p) => p.name.toLowerCase().split(/\s+/)[0] === s.split(/\s+/)[0]) ||
     personas.find((p) => p.role.toLowerCase() === s) ||
     null
   )
@@ -133,27 +104,27 @@ function jsonItems(raw) {
  * Turn whatever the model sent into spoken lines. Handles JSON (one line or many),
  * "Name: line" scripts, and plain speech from small models that ignore the format.
  */
-export function parseLines(raw, personas, lastSpeakerId) {
+export function parseLines(raw, personas, lastSpeaker) {
   const out = []
-  let last = lastSpeakerId
+  let last = lastSpeaker
   const push = (who, text) => {
     const t = cleanText(text, personas)
     if (!t || /^\s*[{[]/.test(t)) return
     let persona = resolvePersona(who, personas)
     if (!persona) {
-      const others = personas.filter((p) => p.id !== last)
+      const others = personas.filter((p) => p.name !== last)
       persona = others[Math.floor(Math.random() * others.length)]
     }
     out.push({ persona, text: t })
-    last = persona.id
+    last = persona.name
   }
 
   const items = jsonItems(raw)
-  if (items) items.forEach((it) => it && push(it.speaker ?? it.id ?? it.name, it.text ?? it.line ?? it.message))
+  if (items) items.forEach((it) => it && push(it.speaker ?? it.name, it.text ?? it.line ?? it.message))
   if (out.length) return out
 
   const body = raw.replace(/^\s*(here'?s|sure|okay|ok)[^\n:]*:\s*/i, '')
-  const names = personas.flatMap((p) => [esc(p.name), esc(p.id)]).join('|')
+  const names = personas.map((p) => esc(p.name)).join('|')
   const re = new RegExp(`^\\s*\\**(${names})\\**\\s*(?:\\([^)]*\\))?\\s*:\\s*`, 'gim')
   const marks = [...body.matchAll(re)]
   if (marks.length) {
@@ -171,7 +142,7 @@ export class MeetingEngine {
     this.getSettings = getSettings
     this.live = live
     this.player = new VoicePlayer(live)
-    this.state = { status: 'idle', topic: '', transcript: [], speakingId: null, thinking: false, error: null, note: null, calls: 0, queued: 0 }
+    this.state = { status: 'idle', topic: '', transcript: [], speaking: null, thinking: false, error: null, note: null, calls: 0, queued: 0 }
     this.listeners = new Set()
     this.epoch = 0
     this.controllers = new Set()
@@ -191,7 +162,7 @@ export class MeetingEngine {
 
   set(patch) {
     this.state = { ...this.state, ...patch }
-    this.live.speakingId = this.state.speakingId
+    this.live.speaking = this.state.speaking
     this.listeners.forEach((f) => f())
   }
 
@@ -202,7 +173,7 @@ export class MeetingEngine {
     this.player.resetFailures()
     const s = this.getSettings()
     if (s.tts.provider === 'kokoro') kokoro.preload(s.tts.kokoroDevice)
-    this.set({ status: 'running', topic: topic.trim(), transcript: [], speakingId: null, thinking: false, error: null, note: null, calls: 0, queued: 0 })
+    this.set({ status: 'running', topic: topic.trim(), transcript: [], speaking: null, thinking: false, error: null, note: null, calls: 0, queued: 0 })
     this._run()
   }
 
@@ -228,7 +199,7 @@ export class MeetingEngine {
   end() {
     this._cancelPending()
     this.player.stop()
-    this.set({ status: 'ended', speakingId: null, thinking: false })
+    this.set({ status: 'ended', speaking: null, thinking: false })
   }
 
   /** The human speaks: everyone stops, pre-written lines are dropped, and the next line responds to them. */
@@ -239,10 +210,10 @@ export class MeetingEngine {
     this.player.stop()
     this.player.unlock()
     const wasRunning = this.state.status === 'running'
-    const line = { id: ++this.lineId, speaker: 'you', name: 'You', role: 'Stakeholder', text }
+    const line = { id: ++this.lineId, you: true, speaker: null, name: 'You', role: 'Stakeholder', text }
     this.set({
       transcript: [...this.state.transcript, line],
-      speakingId: null,
+      speaking: null,
       error: null,
       status: wasRunning ? 'running' : 'paused',
     })
@@ -256,12 +227,12 @@ export class MeetingEngine {
     const s = this.getSettings()
     const text = `Hi, I'm ${persona.name}, the ${persona.role.toLowerCase()} on this team.`
     this.player.stop()
-    this.live.speakingId = persona.id
+    this.live.speaking = persona.name
     try {
       const audio = await this.player.fetchAudio(text, persona, s.tts, { wait: true, onNote: (note) => this.set({ note }) })
       await this.player.play(audio, text, persona, voiceSlot(s.personas, persona))
     } finally {
-      this.live.speakingId = this.state.speakingId
+      this.live.speaking = this.state.speaking
     }
   }
 
@@ -295,8 +266,8 @@ export class MeetingEngine {
         }
         if (epoch !== this.epoch) continue
 
-        const line = { id: ++this.lineId, speaker: turn.persona.id, name: turn.persona.name, role: turn.persona.role, text: turn.text }
-        this.set({ thinking: false, transcript: [...this.state.transcript, line], speakingId: line.speaker })
+        const line = { id: ++this.lineId, you: false, speaker: turn.persona.name, name: turn.persona.name, role: turn.persona.role, text: turn.text }
+        this.set({ thinking: false, transcript: [...this.state.transcript, line], speaking: line.speaker })
 
         // Prepare the next line (and its audio) while this one is spoken.
         if (!turn.final && this.state.status === 'running') {
@@ -307,7 +278,7 @@ export class MeetingEngine {
 
         await this.player.play(turn.audio, turn.text, turn.persona, turn.slot)
         if (epoch !== this.epoch) continue
-        this.set({ speakingId: null })
+        this.set({ speaking: null })
         if (turn.final) {
           this.next = null
           this.set({ status: 'ended' })
@@ -334,7 +305,7 @@ export class MeetingEngine {
       const turn = this.queue.shift()
       this.set({ queued: this.queue.length })
       // The team may have been edited since these lines were written.
-      const persona = s.personas.find((p) => p.id === turn.persona.id) || turn.persona
+      const persona = s.personas.find((p) => p.name === turn.persona.name) || turn.persona
       const audio =
         epoch === this.epoch
           ? await this.player.fetchAudio(turn.text, persona, s.tts, {
@@ -354,36 +325,31 @@ export class MeetingEngine {
     const conv = { mode: 'freeflow', batchSize: 1, ...s.conversation }
     const host = hostOf(s)
     const transcript = this.state.transcript
-    const spoken = transcript.filter((l) => l.speaker !== 'you').length
+    const spoken = transcript.filter((l) => !l.you).length
     const count = Math.max(1, Math.min(conv.batchSize, maxTurns - spoken))
-    const userLast = transcript.at(-1)?.speaker === 'you'
+    const userLast = !!transcript.at(-1)?.you
     const endsHere = spoken + count >= maxTurns
+    const firstRef = count === 1 ? 'This line' : 'Line 1'
 
     let forcedFirst = null
     const phases = []
     if (spoken === 0) {
-      forcedFirst = host.id
-      phases.push(`${count === 1 ? 'This line' : 'Line 1'} is ${host.name} (${host.role}) opening the meeting: a quick hello, the topic, and what the team needs to decide today.`)
+      forcedFirst = host.name
+      phases.push({ key: 'opening', lineRef: firstRef })
     } else if (userLast) {
-      phases.push(`You (the stakeholder) just spoke. ${count === 1 ? 'This line' : 'Line 1'} answers You directly, from the most relevant person.`)
+      phases.push({ key: 'replyToYou', lineRef: firstRef })
     } else if (conv.mode === 'mediator' && count === 1) {
       const recent = transcript.slice(-2)
-      if (recent.length === 2 && recent.every((l) => l.speaker !== host.id && l.speaker !== 'you')) {
-        forcedFirst = host.id
-        phases.push(`This line is ${host.name}, the mediator, reacting briefly and inviting the next person or moving to the next point.`)
+      if (recent.length === 2 && recent.every((l) => !l.you && l.speaker !== host.name)) {
+        forcedFirst = host.name
+        phases.push({ key: 'mediatorNudge', lineRef: firstRef })
       }
     }
-    if (endsHere) {
-      phases.push(
-        `${count === 1 ? 'This is the final line of the meeting' : `The meeting ends with line ${count}`}, spoken by ${host.name}: the decisions made, who owns which next step, then thanks to everyone. Up to 4 sentences.${count > 1 ? ' The lines before it converge toward those decisions.' : ''}`,
-      )
-    } else if (spoken + count >= maxTurns - 4) {
-      phases.push('Time is almost up. Start converging: settle open questions and agree on decisions, owners and next steps.')
-    } else if (!phases.length) {
-      phases.push('Keep the discussion moving naturally.')
-    }
+    if (endsHere) phases.push({ key: 'closing', lineRef: count === 1 ? 'This line' : `Line ${count}` })
+    else if (spoken + count >= maxTurns - 4) phases.push({ key: 'converge' })
+    else if (!phases.length) phases.push({ key: 'keepGoing' })
 
-    const { system, prompt } = buildPrompt({ personas, topic: this.state.topic, transcript, phases, mode: conv.mode, host, count })
+    const { system, prompt } = buildPrompt({ prompts: s.prompts, personas, topic: this.state.topic, transcript, phases, mode: conv.mode, host, count })
     let lines = []
     let lastErr = null
     for (let attempt = 0; attempt < 2 && !lines.length; attempt++) {
@@ -403,7 +369,7 @@ export class MeetingEngine {
     if (!lines.length) throw lastErr
 
     lines = lines.slice(0, count).map((l) => ({ ...l, final: false }))
-    if (forcedFirst) lines[0].persona = personas.find((p) => p.id === forcedFirst) || lines[0].persona
+    if (forcedFirst) lines[0].persona = personas.find((p) => p.name === forcedFirst) || lines[0].persona
     if (spoken + lines.length >= maxTurns) {
       const last = lines.at(-1)
       last.final = true

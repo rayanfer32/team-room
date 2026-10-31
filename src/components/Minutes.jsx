@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 export default function Minutes({ meeting, personas, open, onToggle }) {
   const list = useRef(null)
   const [copied, setCopied] = useState(false)
-  const { transcript, speakingId } = meeting
-  const colors = Object.fromEntries(personas.map((p) => [p.id, p.look.shirt]))
+  const { transcript, speaking } = meeting
+  const colors = Object.fromEntries(personas.map((p) => [p.name, p.look.shirt]))
 
   useEffect(() => {
     const el = list.current
@@ -42,7 +42,7 @@ export default function Minutes({ meeting, personas, open, onToggle }) {
           {transcript.map((l) => (
             <li
               key={l.id}
-              className={`line${l.speaker === 'you' ? ' you' : ''}${l === last && speakingId === l.speaker ? ' live' : ''}`}
+              className={`line${l.you ? ' you' : ''}${l === last && !l.you && speaking === l.speaker ? ' live' : ''}`}
               style={{ '--c': colors[l.speaker] || '#f2b134' }}
             >
               <p className="who">

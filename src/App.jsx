@@ -5,7 +5,8 @@ import Minutes from './components/Minutes'
 import SayBar from './components/SayBar'
 import SettingsDrawer from './components/SettingsDrawer'
 import { loadSettings, saveSettings } from './lib/settings'
-import { MeetingEngine, hostOf } from './lib/engine'
+import { MeetingEngine, hostOf, teamProblem } from './lib/engine'
+import { setConnectionMode } from './lib/services'
 import { LLM_PROVIDERS } from './lib/llm'
 
 export default function App() {
@@ -13,9 +14,10 @@ export default function App() {
   const settingsRef = useRef(settings)
   settingsRef.current = settings
   useEffect(() => saveSettings(settings), [settings])
+  setConnectionMode(settings.connection)
 
   // Shared, mutable state read every frame by the 3D characters.
-  const live = useMemo(() => ({ speakingId: null, amp: 0 }), [])
+  const live = useMemo(() => ({ speaking: null, amp: 0 }), [])
   const engine = useMemo(() => new MeetingEngine({ getSettings: () => settingsRef.current, live }), [live])
   const meeting = useSyncExternalStore(engine.subscribe, engine.getState)
 
@@ -27,14 +29,14 @@ export default function App() {
   const start = () => {
     const s = settingsRef.current
     const needsKey = LLM_PROVIDERS[s.llm.provider]?.needsKey && !s.llm.keys[s.llm.provider]
-    if (needsKey) {
+    if (needsKey || teamProblem(s.personas)) {
       setSettingsOpen(true)
       return
     }
     engine.start(topic)
   }
 
-  const currentLine = meeting.speakingId ? meeting.transcript.findLast((l) => l.speaker === meeting.speakingId)?.text : null
+  const currentLine = meeting.speaking ? meeting.transcript.findLast((l) => !l.you && l.speaker === meeting.speaking)?.text : null
   const host = hostOf(settings)
 
   return (
@@ -42,9 +44,9 @@ export default function App() {
       <div className="stage">
         <OfficeScene
           personas={settings.personas}
-          managerId={host.id}
+          hostName={host.name}
           live={live}
-          speakingId={meeting.speakingId}
+          speaking={meeting.speaking}
           line={currentLine}
           topic={meeting.status === 'idle' ? topic : meeting.topic}
         />
@@ -76,6 +78,7 @@ export default function App() {
         setSettings={setSettings}
         engine={engine}
         running={meeting.status === 'running'}
+        topic={meeting.status === 'idle' || meeting.status === 'ended' ? topic : meeting.topic}
       />
     </div>
   )

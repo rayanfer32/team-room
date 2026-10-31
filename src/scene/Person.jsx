@@ -249,7 +249,7 @@ export default function Person({ persona, seat, seats, live, speaking, line }) {
 
   useFrame((state, dt) => {
     const t = state.clock.elapsedTime + phase.current
-    const isMe = live.speakingId === persona.id
+    const isMe = live.speaking === persona.name
     const amp = isMe ? live.amp : 0
     const k = 1 - Math.exp(-dt * 4)
 
@@ -259,7 +259,7 @@ export default function Person({ persona, seat, seats, live, speaking, line }) {
     let yaw = Math.sin(t * 0.23) * 0.35
     let pitch = 0.06
     let lean = 0
-    const other = live.speakingId && live.speakingId !== persona.id && seats[live.speakingId]
+    const other = live.speaking && live.speaking !== persona.name && seats[live.speaking]
     if (other) {
       const world = Math.atan2(other.x - seat.x, other.z - seat.z)
       yaw = THREE.MathUtils.clamp(wrap(world - seat.rot), -1.25, 1.25)

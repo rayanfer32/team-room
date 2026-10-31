@@ -5,10 +5,10 @@ import { LLM_PROVIDERS } from '../lib/llm'
 import { TTS_PROVIDERS } from '../lib/tts'
 
 function statusLine(meeting, personas) {
-  const { status, speakingId, thinking } = meeting
+  const { status, speaking, thinking } = meeting
   if (status === 'idle') return 'Ready when you are'
   if (status === 'ended') return 'Meeting ended'
-  if (speakingId) return `${personas.find((p) => p.id === speakingId)?.name ?? 'Someone'} is speaking`
+  if (speaking) return `${speaking} is speaking`
   if (thinking) return 'Thinking about what to say…'
   if (status === 'paused') return 'Paused'
   return 'In session'
@@ -16,7 +16,7 @@ function statusLine(meeting, personas) {
 
 export default function MeetingPanel({ meeting, settings, host, topic, setTopic, onStart, onPause, onResume, onStep, onEnd, onOpenSettings, onSetMode }) {
   const { status, transcript, error, note } = meeting
-  const teamTurns = transcript.filter((l) => l.speaker !== 'you').length
+  const teamTurns = transcript.filter((l) => !l.you).length
   const canEditTopic = status === 'idle' || status === 'ended'
   const llm = LLM_PROVIDERS[settings.llm.provider]
   const voice = TTS_PROVIDERS[settings.tts.provider]
