@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS = {
       groq: 'llama-3.3-70b-versatile',
       gemini: 'gemini-2.5-flash',
       ollama: 'llama3.2',
+      chatjimmy: 'llama3.1-8B',
     },
   },
   tts: {
@@ -19,6 +20,7 @@ export const DEFAULT_SETTINGS = {
     elevenModel: 'eleven_flash_v2_5',
     fishKey: '',
     fishModel: 's1',
+    kokoroDevice: 'auto',
   },
   maxTurns: 24,
   personas: DEFAULT_PERSONAS,

@@ -167,9 +167,13 @@ textarea:focus, input:focus, select:focus { border-color: var(--marigold); outli
 }
 .drawer h2 { font-size: 22px; }
 .drawer section { padding: 18px 0; border-top: 1px solid var(--line); }
-.segmented { display: flex; background: rgba(0, 0, 0, 0.3); border-radius: 999px; padding: 3px; margin-bottom: 14px; }
+.segmented { display: flex; flex-wrap: wrap; gap: 2px; background: rgba(0, 0, 0, 0.3); border-radius: 20px; padding: 3px; margin-bottom: 14px; }
+.kokoro .segmented { margin-bottom: 0; }
+.kokoro .meter { margin: 8px 0 0; }
+.kokoro .btn { margin-top: 10px; }
+.fine.err { color: var(--rose); }
 .segmented button {
-  flex: 1; border: 0; background: transparent; padding: 7px 6px; border-radius: 999px;
+  flex: 1 1 auto; border: 0; background: transparent; padding: 7px 6px; border-radius: 999px;
   cursor: pointer; color: var(--sage); font-size: 14px; font-weight: 500;
 }
 .segmented button.on { background: var(--paper); color: var(--forest-solid); font-weight: 600; }

@@ -1,8 +1,10 @@
 import { readError } from './llm'
+import { kokoro } from './kokoro'
 
 export const TTS_PROVIDERS = {
   elevenlabs: { label: 'ElevenLabs', keyUrl: 'https://elevenlabs.io/app/settings/api-keys' },
   fish: { label: 'Fish Audio', keyUrl: 'https://fish.audio/app/api-keys/' },
+  kokoro: { label: 'Kokoro', keyUrl: '' },
   browser: { label: 'Browser voice', keyUrl: '' },
 }
 
@@ -90,8 +92,9 @@ export class VoicePlayer {
   }
 
   /** Returns an audio Blob from the chosen cloud voice, or null to use the browser voice. */
-  async fetchAudio(text, persona, tts, { signal, onNote } = {}) {
+  async fetchAudio(text, persona, tts, { signal, onNote, wait = false } = {}) {
     const p = tts.provider
+    if (p === 'kokoro') return this._kokoro(text, persona, tts, { signal, onNote, wait })
     if (p !== 'elevenlabs' && p !== 'fish') return null
     const label = TTS_PROVIDERS[p].label
     const key = p === 'elevenlabs' ? tts.elevenKey : tts.fishKey
@@ -101,12 +104,47 @@ export class VoicePlayer {
     }
     if (this.failed.has(p)) return null
     try {
-      return p === 'elevenlabs' ? await elevenLabs(text, persona, tts, signal) : await fishAudio(text, persona, tts, signal)
+      const blob = p === 'elevenlabs' ? await elevenLabs(text, persona, tts, signal) : await fishAudio(text, persona, tts, signal)
+      onNote?.(null)
+      return blob
     } catch (e) {
       if (e.name === 'AbortError') throw e
       this.failed.add(p)
       onNote?.(`${label} stopped working (${e.message}). Switched to the browser voice for this meeting.`)
       return null
+    }
+  }
+
+  async _kokoro(text, persona, tts, { signal, onNote, wait }) {
+    if (this.failed.has('kokoro')) return null
+    const device = tts.kokoroDevice
+    const giveUp = (msg) => {
+      this.failed.add('kokoro')
+      onNote?.(`Kokoro stopped working (${msg}). Switched to the browser voice for this meeting.`)
+      return null
+    }
+    if (!kokoro.isReady(device)) {
+      if (wait) {
+        try {
+          await kokoro.whenReady(device)
+        } catch (e) {
+          return giveUp(e.message)
+        }
+      } else {
+        kokoro.preload(device)
+        if (kokoro.getStatus().state === 'error') return giveUp(kokoro.getStatus().error)
+        onNote?.('Kokoro voices are still downloading, so the browser voice is speaking for now.')
+        return null
+      }
+    }
+    try {
+      const voice = persona.voice?.kokoro || (persona.gender === 'male' ? 'am_michael' : 'af_heart')
+      const blob = await kokoro.generate(text, { voice, speed: persona.voice?.rate ?? 1, device, signal })
+      onNote?.(null)
+      return blob
+    } catch (e) {
+      if (e.name === 'AbortError') throw e
+      return giveUp(e.message)
     }
   }
 

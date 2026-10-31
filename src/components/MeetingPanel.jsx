@@ -1,4 +1,6 @@
+import { useSyncExternalStore } from 'react'
 import { EXAMPLE_TOPICS } from '../data/personas'
+import { kokoro } from '../lib/kokoro'
 import { LLM_PROVIDERS } from '../lib/llm'
 import { TTS_PROVIDERS } from '../lib/tts'
 
@@ -18,6 +20,8 @@ export default function MeetingPanel({ meeting, settings, topic, setTopic, onSta
   const canEditTopic = status === 'idle' || status === 'ended'
   const llm = LLM_PROVIDERS[settings.llm.provider]
   const voice = TTS_PROVIDERS[settings.tts.provider]
+  const ko = useSyncExternalStore(kokoro.subscribe, kokoro.getStatus)
+  const koLoading = settings.tts.provider === 'kokoro' && ko.state === 'loading'
 
   return (
     <section className="panel meeting" aria-label="Meeting controls">
@@ -111,7 +115,13 @@ export default function MeetingPanel({ meeting, settings, topic, setTopic, onSta
           )}
         </p>
       )}
-      {note && !error && <p className="msg note">{note}</p>}
+      {koLoading ? (
+        <p className="msg note">
+          Downloading Kokoro voices{ko.totalMB ? `: ${ko.progress}%` : '…'} The browser voice speaks until they're ready.
+        </p>
+      ) : (
+        note && !error && <p className="msg note">{note}</p>
+      )}
     </section>
   )
 }

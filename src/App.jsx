@@ -6,6 +6,7 @@ import SayBar from './components/SayBar'
 import SettingsDrawer from './components/SettingsDrawer'
 import { loadSettings, saveSettings } from './lib/settings'
 import { MeetingEngine, findManager } from './lib/engine'
+import { LLM_PROVIDERS } from './lib/llm'
 
 export default function App() {
   const [settings, setSettings] = useState(loadSettings)
@@ -25,7 +26,7 @@ export default function App() {
 
   const start = () => {
     const s = settingsRef.current
-    const needsKey = s.llm.provider !== 'ollama' && !s.llm.keys[s.llm.provider]
+    const needsKey = LLM_PROVIDERS[s.llm.provider]?.needsKey && !s.llm.keys[s.llm.provider]
     if (needsKey) {
       setSettingsOpen(true)
       return

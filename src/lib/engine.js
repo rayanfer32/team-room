@@ -1,5 +1,6 @@
 import { complete } from './llm'
 import { VoicePlayer } from './tts'
+import { kokoro } from './kokoro'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -41,7 +42,21 @@ Who speaks next, and what do they say? JSON only.`
   return { system, prompt }
 }
 
-function parseTurn(raw, personas) {
+const STAGE = /\((?:chuckles|laughs|laughing|sighs|smiles|smiling|pauses|nods|grins|clears throat)[^)]*\)|\*[^*]{1,30}\*/gi
+
+/** Keep a line to a few spoken sentences, even if the model rambles. */
+function trimSpeech(text, maxWords = 75) {
+  const sentences = text.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) || [text]
+  let out = ''
+  for (const s of sentences) {
+    const next = `${out} ${s.trim()}`.trim()
+    if (out && next.split(/\s+/).length > maxWords) break
+    out = next
+  }
+  return out
+}
+
+export function parseTurn(raw, personas, lastSpeakerId) {
   let obj = null
   const m = raw.match(/\{[\s\S]*\}/)
   if (m) {
@@ -61,13 +76,18 @@ function parseTurn(raw, personas) {
     speaker = String(obj.speaker ?? obj.id ?? obj.name ?? '').toLowerCase().trim()
     text = String(obj.text ?? obj.line ?? obj.message ?? '')
   } else {
-    const mm = raw.match(/^\s*([A-Za-z]+)\s*(?:\([^)]*\))?\s*:\s*([\s\S]+)/)
-    if (mm) {
+    const cleaned = raw.replace(/^\s*(here'?s|sure|okay|ok)[^\n:]*:\s*/i, '')
+    const mm = cleaned.match(/^\s*\**([A-Za-z]+)\**\s*(?:\([^)]*\))?\s*:\s*([\s\S]+)/)
+    if (mm && personas.some((p) => p.name.toLowerCase() === mm[1].toLowerCase() || p.id === mm[1].toLowerCase())) {
       speaker = mm[1].toLowerCase()
       text = mm[2]
+    } else {
+      text = cleaned // plain speech with no speaker: we'll pick one below
     }
+    // If the model wrote a whole script, keep only the first person's line.
+    text = text.split(/\n\s*\**[A-Z][a-z]+\**\s*(?:\([^)]*\))?\s*:/)[0]
   }
-  const persona =
+  let persona =
     personas.find((p) => p.id === speaker) ||
     personas.find((p) => p.name.toLowerCase() === speaker) ||
     personas.find((p) => speaker && (speaker.includes(p.name.toLowerCase()) || speaker.includes(p.id)))
@@ -76,7 +96,14 @@ function parseTurn(raw, personas) {
     const prefix = new RegExp(`^${p.name}\\s*(\\([^)]*\\))?\\s*:\\s*`, 'i')
     text = text.replace(prefix, '')
   }
-  text = text.replace(/^["'“]+|["'”]+$/g, '').replace(/\*+/g, '').trim()
+  text = text.replace(STAGE, '').replace(/^["'“]+|["'”]+$/g, '').replace(/\*+/g, '').replace(/\s+/g, ' ').trim()
+  text = trimSpeech(text)
+  text = text.replace(/<[^>]*>/g, '').trim()
+  if (text.split(/\s+/).length < 3) text = ''
+  if (!persona && text && !/^\s*[{[]/.test(text)) {
+    const others = personas.filter((p) => p.id !== lastSpeakerId)
+    persona = others[Math.floor(Math.random() * others.length)]
+  }
   if (!persona || !text) throw new Error('The model sent a reply the meeting could not read. Press Next line to retry, or try another model.')
   return { persona, text }
 }
@@ -114,6 +141,8 @@ export class MeetingEngine {
     this.player.stop()
     this.player.unlock()
     this.player.resetFailures()
+    const s = this.getSettings()
+    if (s.tts.provider === 'kokoro') kokoro.preload(s.tts.kokoroDevice)
     this.set({ status: 'running', topic: topic.trim(), transcript: [], speakingId: null, thinking: false, error: null, note: null })
     this._run()
   }
@@ -170,7 +199,7 @@ export class MeetingEngine {
     this.player.stop()
     this.live.speakingId = persona.id
     try {
-      const audio = await this.player.fetchAudio(text, persona, s.tts, { onNote: (note) => this.set({ note }) })
+      const audio = await this.player.fetchAudio(text, persona, s.tts, { wait: true, onNote: (note) => this.set({ note }) })
       await this.player.play(audio, text, persona, voiceSlot(s.personas, persona))
     } finally {
       this.live.speakingId = this.state.speakingId
@@ -271,7 +300,7 @@ export class MeetingEngine {
           signal: ctrl.signal,
         })
         try {
-          parsed = parseTurn(raw, personas)
+          parsed = parseTurn(raw, personas, transcript.at(-1)?.speaker)
         } catch (e) {
           lastErr = e
         }

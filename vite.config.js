@@ -23,6 +23,7 @@ function proxies(env) {
     '/proxy/ollama': route(env.OLLAMA_URL || 'http://127.0.0.1:11434', '/proxy/ollama'),
     '/proxy/elevenlabs': route('https://api.elevenlabs.io', '/proxy/elevenlabs'),
     '/proxy/fish': route('https://api.fish.audio', '/proxy/fish'),
+    '/proxy/chatjimmy': route('https://chatjimmy.ai', '/proxy/chatjimmy'),
   }
 }
 
@@ -30,6 +31,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
     plugins: [react()],
+    worker: { format: 'es' },
+    // Pre-bundle Kokoro up front so the dev server doesn't reload the page
+    // the first time the voice worker starts.
+    optimizeDeps: { include: ['kokoro-js'] },
     server: { proxy: proxies(env) },
     preview: { proxy: proxies(env) },
   }

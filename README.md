@@ -21,12 +21,17 @@ All API calls go through Vite's local proxy (see `vite.config.js`). That avoids 
 | Gemini | Free tier | `gemini-2.5-flash` | aistudio.google.com/apikey |
 | Claude | Paid API key | `claude-haiku-5-5` | console.anthropic.com |
 | Ollama | None | `llama3.2` | Install Ollama, then `ollama pull llama3.2` |
+| ChatJimmy | None | `llama3.1-8B` | Free public service at chatjimmy.ai |
+
+ChatJimmy has no official API. The app calls the same `/api/chat` endpoint its website uses and strips the `<|stats|>` block from replies, so it may slow down, rate-limit or change without notice. Small 8B models often ignore the reply format. The app handles this by reading `Name: line` replies, cutting multi-speaker scripts to one speaker, removing stage directions like "(laughs)", and trimming long answers.
 
 Model names are editable in Settings, so you can switch whenever a provider renames or retires a model. If Ollama runs somewhere other than `http://127.0.0.1:11434`, copy `.env.example` to `.env` and set `OLLAMA_URL`.
 
 ## Voices
 
-You can pick ElevenLabs, Fish Audio or the browser's built-in voice. If the cloud voice has no key, runs out of quota, or errors, the browser voice takes over automatically for the rest of the meeting, and a note explains why.
+You can pick ElevenLabs, Fish Audio, Kokoro or the browser's built-in voice. If the cloud voice has no key, runs out of quota, or errors, the browser voice takes over automatically for the rest of the meeting, and a note explains why.
+
+**Kokoro** runs entirely in your browser, so it needs no key and has no quota. It runs in a Web Worker, so generating speech doesn't stutter the 3D scene. The model downloads once from huggingface.co and the browser caches it. That's about 90 MB for CPU (q8) and more for GPU (fp32, WebGPU). Choose Auto, GPU or CPU in Settings. GPU is much faster where WebGPU is supported, such as recent Chrome and Edge. Until the model is ready, the browser voice speaks so the meeting can start right away. Each person has their own Kokoro voice from the 28 English voices, set under Team.
 
 ElevenLabs comes with a default premade voice ID for each person, and you can change them under Settings, then Team. For Fish Audio, paste a voice model ID from fish.audio for each person; with no ID, it uses Fish's default voice. You can also choose a specific browser voice, pitch and speed per person, and use the **Hear** button to preview.
 
@@ -42,8 +47,10 @@ ElevenLabs comes with a default premade voice ID for each person, and you can ch
 ```
 src/
   data/personas.js       default team and example topics
-  lib/llm.js             Claude, Groq, Gemini, Ollama adapters
-  lib/tts.js             ElevenLabs, Fish Audio, browser speech, lip-sync amplitude
+  lib/llm.js             Claude, Groq, Gemini, Ollama, ChatJimmy adapters
+  lib/tts.js             ElevenLabs, Fish Audio, Kokoro, browser speech, lip-sync amplitude
+  lib/kokoro.js          Kokoro client: voice list, download progress, requests to the worker
+  lib/kokoro.worker.js   runs kokoro-js (ONNX) off the main thread
   lib/engine.js          meeting loop: prompting, turn-taking, interruptions, prefetch
   lib/settings.js        settings saved in localStorage
   scene/OfficeScene.jsx  canvas, lights, camera, seating

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { LLM_PROVIDERS } from '../lib/llm'
 import { TTS_PROVIDERS } from '../lib/tts'
 import { defaultPersonas } from '../lib/settings'
+import { kokoro, KOKORO_VOICES, resolveDevice } from '../lib/kokoro'
 
 function Segmented({ value, options, onChange, label }) {
   return (
@@ -76,6 +77,21 @@ function PersonaEditor({ persona, onChange, voices, onTest, testDisabled, ttsPro
             <input value={persona.voice.elevenlabs} onChange={(e) => setVoice({ elevenlabs: e.target.value })} spellCheck={false} />
           </Field>
         )}
+        {ttsProvider === 'kokoro' && (
+          <Field label="Kokoro voice">
+            <select value={persona.voice.kokoro || ''} onChange={(e) => setVoice({ kokoro: e.target.value })}>
+              {['female', 'male'].map((g) => (
+                <optgroup key={g} label={g === 'female' ? 'Female voices' : 'Male voices'}>
+                  {KOKORO_VOICES.filter((v) => v.gender === g).map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </Field>
+        )}
         {ttsProvider === 'fish' && (
           <Field label="Fish Audio voice ID" hint="The model ID from a voice page on fish.audio. Leave empty for the default voice.">
             <input value={persona.voice.fish} onChange={(e) => setVoice({ fish: e.target.value })} spellCheck={false} />
@@ -104,6 +120,55 @@ function PersonaEditor({ persona, onChange, voices, onTest, testDisabled, ttsPro
         </button>
       </div>
     </details>
+  )
+}
+
+function KokoroSettings({ device, onDevice }) {
+  const st = useSyncExternalStore(kokoro.subscribe, kokoro.getStatus)
+  const target = resolveDevice(device)
+  const hasGpu = typeof navigator !== 'undefined' && 'gpu' in navigator
+  let status
+  if (st.state === 'loading' && st.device === target)
+    status = st.totalMB ? `Downloading voice model: ${st.progress}% of ${st.totalMB} MB` : 'Preparing the voice model…'
+  else if (st.state === 'ready' && st.device === target) status = `Ready, running on ${target === 'webgpu' ? 'your GPU' : 'your CPU'}.`
+  else if (st.state === 'error')
+    status = /fetch|network/i.test(st.error)
+      ? `Couldn't download Kokoro (${st.error}). The model comes from huggingface.co, so check your connection, then try again.`
+      : `Couldn't load Kokoro: ${st.error}`
+  else status = 'Not downloaded yet. It downloads once (about 90 MB on CPU, more on GPU) and is cached after that.'
+  return (
+    <div className="kokoro">
+      <Field label="Run Kokoro on">
+        <Segmented
+          label="Kokoro device"
+          value={device}
+          options={[
+            ['auto', hasGpu ? 'Auto (GPU)' : 'Auto (CPU)'],
+            ['webgpu', 'GPU (WebGPU)'],
+            ['wasm', 'CPU'],
+          ]}
+          onChange={(v) => {
+            onDevice(v)
+            kokoro.preload(v)
+          }}
+        />
+      </Field>
+      <p className={`fine${st.state === 'error' ? ' err' : ''}`} aria-live="polite">
+        {status}
+      </p>
+      {st.state === 'loading' && st.device === target && (
+        <div className="meter">
+          <span style={{ width: `${st.progress}%` }} />
+        </div>
+      )}
+      {st.note && <p className="fine">{st.note}</p>}
+      {(st.state === 'idle' || st.state === 'error' || st.device !== target) && st.state !== 'loading' && (
+        <button className="btn" onClick={() => kokoro.preload(device)}>
+          {st.state === 'error' ? 'Try again' : 'Download voices now'}
+        </button>
+      )}
+      <p className="fine">Each person gets their own Kokoro voice under Team. The GPU option is much faster if your browser supports WebGPU.</p>
+    </div>
   )
 }
 
@@ -169,10 +234,15 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
             >
               <SecretInput value={llm.keys[llm.provider] || ''} placeholder="Paste key" onChange={(v) => update((s) => (s.llm.keys[s.llm.provider] = v))} />
             </Field>
-          ) : (
+          ) : llm.provider === 'ollama' ? (
             <p className="fine">
               No key needed. Install Ollama, run <code>ollama pull {llm.models.ollama}</code>, and keep it running. Set <code>OLLAMA_URL</code> in <code>.env</code> if it isn't on
               port 11434.
+            </p>
+          ) : (
+            <p className="fine">
+              No key needed. ChatJimmy is a free public service without an official API, so it can be slow, rate-limited or change without notice. Its small models sometimes ignore
+              the reply format; the meeting copes, but bigger models stay more in character.
             </p>
           )}
           <Field label="Model name" hint="Any model your provider offers.">
@@ -188,6 +258,7 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
             options={Object.entries(TTS_PROVIDERS).map(([k, v]) => [k, v.label])}
             onChange={(v) => {
               touchVoices()
+              if (v === 'kokoro') kokoro.preload(tts.kokoroDevice)
               update((s) => (s.tts.provider = v))
             }}
           />
@@ -245,7 +316,12 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
               </Field>
             </>
           )}
-          <p className="fine">If the cloud voice fails or has no key, the browser voice takes over so the meeting keeps going.</p>
+          {tts.provider === 'kokoro' && <KokoroSettings device={tts.kokoroDevice} onDevice={(v) => update((s) => (s.tts.kokoroDevice = v))} />}
+          <p className="fine">
+            {tts.provider === 'kokoro'
+              ? 'Until Kokoro is ready, or if it fails, the browser voice takes over so the meeting keeps going.'
+              : 'If the cloud voice fails or has no key, the browser voice takes over so the meeting keeps going.'}
+          </p>
         </section>
 
         <section>

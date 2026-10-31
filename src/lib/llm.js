@@ -3,6 +3,20 @@ export const LLM_PROVIDERS = {
   groq: { label: 'Groq', needsKey: true, keyUrl: 'https://console.groq.com/keys', keyName: 'Groq API key (free tier)' },
   gemini: { label: 'Gemini', needsKey: true, keyUrl: 'https://aistudio.google.com/apikey', keyName: 'Gemini API key (free tier)' },
   ollama: { label: 'Ollama', needsKey: false, keyUrl: 'https://ollama.com/download', keyName: '' },
+  chatjimmy: { label: 'ChatJimmy', needsKey: false, keyUrl: 'https://chatjimmy.ai', keyName: '' },
+}
+
+/** ChatJimmy appends a <|stats|>…<|/stats|> block and may wrap the reply in quotes. */
+function cleanJimmy(text) {
+  let t = text.replace(/<\|stats\|>[\s\S]*?(<\|\/stats\|>|$)/g, '').trim()
+  if (t.startsWith('"') && t.endsWith('"')) {
+    try {
+      t = JSON.parse(t)
+    } catch {
+      t = t.slice(1, -1)
+    }
+  }
+  return t.trim()
 }
 
 export async function readError(res) {
@@ -98,6 +112,29 @@ export async function complete({ provider, apiKey, model, system, prompt, signal
         throw new Error(`Ollama: ${e.message}. Make sure Ollama is running and "${model}" is pulled (ollama pull ${model}).`)
       })
       return data.message?.content || ''
+    }
+    case 'chatjimmy': {
+      let res
+      try {
+        res = await fetch('/proxy/chatjimmy/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: prompt },
+            ],
+            chatOptions: { selectedModel: model, systemPrompt: system, topK: 2 },
+            attachment: null,
+          }),
+          signal,
+        })
+      } catch (e) {
+        if (e.name === 'AbortError') throw e
+        throw new Error('Could not reach ChatJimmy. Is the dev server running (npm run dev)?')
+      }
+      if (!res.ok) throw new Error(`ChatJimmy ${await readError(res)}`)
+      return cleanJimmy(await res.text())
     }
   }
 }
