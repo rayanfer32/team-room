@@ -5,7 +5,7 @@ import Minutes from './components/Minutes'
 import SayBar from './components/SayBar'
 import SettingsDrawer from './components/SettingsDrawer'
 import { loadSettings, saveSettings } from './lib/settings'
-import { MeetingEngine, findManager } from './lib/engine'
+import { MeetingEngine, hostOf } from './lib/engine'
 import { LLM_PROVIDERS } from './lib/llm'
 
 export default function App() {
@@ -35,14 +35,14 @@ export default function App() {
   }
 
   const currentLine = meeting.speakingId ? meeting.transcript.findLast((l) => l.speaker === meeting.speakingId)?.text : null
-  const managerId = findManager(settings.personas).id
+  const host = hostOf(settings)
 
   return (
     <div className="app">
       <div className="stage">
         <OfficeScene
           personas={settings.personas}
-          managerId={managerId}
+          managerId={host.id}
           live={live}
           speakingId={meeting.speakingId}
           line={currentLine}
@@ -54,6 +54,8 @@ export default function App() {
         <MeetingPanel
           meeting={meeting}
           settings={settings}
+          host={host}
+          onSetMode={(mode) => setSettings((s) => ({ ...s, conversation: { ...s.conversation, mode } }))}
           topic={topic}
           setTopic={setTopic}
           onStart={start}

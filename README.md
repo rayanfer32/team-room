@@ -37,7 +37,16 @@ ElevenLabs comes with a default premade voice ID for each person, and you can ch
 
 ## How the meeting works
 
-- **Who speaks next:** each turn, the model receives the team, the topic and the recent transcript, and returns `{ "speaker", "text" }`. The model picks the speaker based on who was addressed and whose expertise fits. The manager opens the meeting, starts converging near the end, and closes with decisions and owners.
+**Conversation style** (switch on the main panel or in Settings):
+- **Free flow:** anyone jumps in when the discussion calls for them.
+- **Mediator:** one person frames each question, invites colleagues by name and keeps the meeting moving. The mediator defaults to whoever has a manager or lead role, and you can pick anyone in Settings.
+
+**Lines per API call** (Settings, 1 to 10): the model can write several upcoming lines in a single request, which helps with free-tier rate limits. For example, 24 lines at 4 per call is about 6 calls instead of 24. The panel shows how many calls were made and how many lines are written ahead. When you jump in, the pre-written lines are dropped so the team responds to you.
+
+**Team:** add or remove people under Settings, then Team, with 2 to 8 seats. The table and rug grow to fit. Each person has editable skin, hair, clothes, hair style, glasses and beard.
+
+
+- **Who speaks next:** each call, the model receives the team, the topic and the recent transcript, and returns `{ "speaker", "text" }` (or `{ "lines": [...] }` when writing several lines at once). The model picks the speaker based on who was addressed and whose expertise fits. The manager opens the meeting, starts converging near the end, and closes with decisions and owners.
 - **Smooth pacing:** while one person speaks, the next line and its audio are already being prepared.
 - **Joining in:** sending a message stops the current speaker and cancels anything prepared. The most relevant teammate answers you next. This works whether the meeting is running or paused.
 - **Controls:** you can pause the meeting, step one line at a time, or end it. **Copy** in Minutes puts the full transcript on your clipboard.

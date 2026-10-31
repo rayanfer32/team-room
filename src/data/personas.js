@@ -58,3 +58,44 @@ export const EXAMPLE_TOPICS = [
   'Adding an AI chat assistant to support',
   'Cutting app startup time in half',
 ]
+
+export const MIN_TEAM = 2
+export const MAX_TEAM = 8
+
+const SKINS = ['#f1c9a5', '#e3bf9a', '#c99a72', '#b07848', '#8d5a3b', '#6b4430']
+const HAIRS = ['#1f1512', '#3b2416', '#6b4226', '#a0703a', '#8f8a84', '#2a1a14']
+const SHIRTS = ['#4c8c6a', '#d9784f', '#5b6fb5', '#c2a14a', '#7a5ca8', '#3d8fa8', '#b5577a', '#6f8f3a']
+const PANTS = ['#2d2f36', '#3c4a5c', '#4a3f3a', '#2f3a33', '#3a3a44']
+const SPARE_NAMES = ['Kiran', 'Neha', 'Rohan', 'Ananya', 'Dev', 'Isha', 'Leo', 'Maya', 'Arun', 'Zara']
+const pick = (list) => list[Math.floor(Math.random() * list.length)]
+
+/** A fresh teammate with a random look. Everything is editable afterwards. */
+export function newPersona(existing = []) {
+  const taken = new Set(existing.map((p) => p.name))
+  const gender = existing.filter((p) => p.gender === 'female').length > existing.length / 2 ? 'male' : 'female'
+  const name = SPARE_NAMES.find((n) => !taken.has(n)) || `Teammate ${existing.length + 1}`
+  return {
+    id: `p${Math.random().toString(36).slice(2, 8)}`,
+    name,
+    role: 'Team member',
+    gender,
+    traits: 'Curious and constructive. Asks clarifying questions and builds on other people’s ideas.',
+    look: {
+      skin: pick(SKINS),
+      hair: pick(HAIRS),
+      hairStyle: gender === 'male' ? pick(['short', 'short', 'none']) : pick(['long', 'bob', 'bun']),
+      shirt: pick(SHIRTS),
+      pants: pick(PANTS),
+      glasses: Math.random() > 0.6,
+      beard: gender === 'male' && Math.random() > 0.6,
+    },
+    voice: {
+      elevenlabs: gender === 'male' ? 'ErXwobaYiN019PkySvjV' : 'AZnzlk1XvdvUeBnXmlld',
+      fish: '',
+      kokoro: gender === 'male' ? 'am_fenrir' : 'af_nicole',
+      browserVoice: '',
+      pitch: 1,
+      rate: 1,
+    },
+  }
+}

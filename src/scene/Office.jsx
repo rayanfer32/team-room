@@ -237,7 +237,7 @@ function useBoardTexture(topic) {
 
 /* ---------- furniture ---------- */
 
-function Floor() {
+function Floor({ tableR = 1.6 }) {
   const tones = ['#b78a5c', '#ad8153', '#bf9365', '#b3875a']
   return (
     <group>
@@ -248,11 +248,11 @@ function Floor() {
         </mesh>
       ))}
       <mesh position={[0, 0.006, -0.2]} receiveShadow>
-        <cylinderGeometry args={[3.2, 3.2, 0.02, 12]} />
+        <cylinderGeometry args={[tableR + 1.6, tableR + 1.6, 0.02, 12]} />
         <M color="#d4a86a" />
       </mesh>
       <mesh position={[0, 0.012, -0.2]} receiveShadow>
-        <cylinderGeometry args={[2.9, 2.9, 0.02, 12]} />
+        <cylinderGeometry args={[tableR + 1.3, tableR + 1.3, 0.02, 12]} />
         <M color="#e3c38b" />
       </mesh>
     </group>
@@ -561,17 +561,17 @@ function Mug({ color }) {
   )
 }
 
-export function MeetingTable({ seatsList }) {
+export function MeetingTable({ seatsList, radius = 1.6 }) {
   const top = 0.78
   return (
     <group>
       <mesh position={[0, 0.74, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[1.6, 1.6, 0.08, 10]} />
-        <M color="#c99a6a" />
+        <cylinderGeometry args={[radius, radius, 0.08, 64]} />
+        <meshStandardMaterial color="#c99a6a" roughness={0.55} />
       </mesh>
       <mesh position={[0, 0.69, 0]}>
-        <cylinderGeometry args={[1.55, 1.5, 0.04, 10]} />
-        <M color="#a87e55" />
+        <cylinderGeometry args={[radius - 0.05, radius - 0.1, 0.04, 64]} />
+        <meshStandardMaterial color="#a87e55" roughness={0.6} />
       </mesh>
       <mesh position={[0, 0.36, 0]} castShadow>
         <cylinderGeometry args={[0.16, 0.22, 0.66, 6]} />
@@ -583,8 +583,8 @@ export function MeetingTable({ seatsList }) {
       </mesh>
       {seatsList.map((s, i) => {
         const a = s.angle
-        const lr = 1.15
-        const mr = 1.2
+        const lr = radius - 0.45
+        const mr = radius - 0.4
         return (
           <group key={s.id}>
             <group position={[Math.sin(a) * lr, top, Math.cos(a) * lr]} rotation={[0, s.rot, 0]}>
@@ -618,10 +618,10 @@ export function MeetingTable({ seatsList }) {
   )
 }
 
-export default function Office({ topic }) {
+export default function Office({ topic, tableR }) {
   return (
     <group>
-      <Floor />
+      <Floor tableR={tableR} />
       <Walls />
       <Bookshelf position={[-6.65, 0, -3.6]} />
       <Whiteboard topic={topic} />

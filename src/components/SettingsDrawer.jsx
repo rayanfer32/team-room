@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { LLM_PROVIDERS } from '../lib/llm'
 import { TTS_PROVIDERS } from '../lib/tts'
 import { defaultPersonas } from '../lib/settings'
+import { MAX_TEAM, MIN_TEAM, newPersona } from '../data/personas'
+import { findManager } from '../lib/engine'
 import { kokoro, KOKORO_VOICES, resolveDevice } from '../lib/kokoro'
 
 function Segmented({ value, options, onChange, label }) {
@@ -38,7 +40,7 @@ function SecretInput({ value, onChange, placeholder }) {
   )
 }
 
-function PersonaEditor({ persona, onChange, voices, onTest, testDisabled, ttsProvider }) {
+function PersonaEditor({ persona, onChange, voices, onTest, testDisabled, ttsProvider, onRemove, canRemove }) {
   const set = (patch) => onChange({ ...persona, ...patch })
   const setVoice = (patch) => onChange({ ...persona, voice: { ...persona.voice, ...patch } })
   const setLook = (patch) => onChange({ ...persona, look: { ...persona.look, ...patch } })
@@ -61,17 +63,47 @@ function PersonaEditor({ persona, onChange, voices, onTest, testDisabled, ttsPro
         <Field label="Personality" hint="How they think, what they care about, how they talk.">
           <textarea rows={3} value={persona.traits} onChange={(e) => set({ traits: e.target.value })} />
         </Field>
-        <div className="two">
-          <Field label="Shirt colour">
-            <input type="color" value={persona.look.shirt} onChange={(e) => setLook({ shirt: e.target.value })} />
-          </Field>
-          <Field label="Voice type">
-            <select value={persona.gender} onChange={(e) => set({ gender: e.target.value })}>
-              <option value="female">Female</option>
-              <option value="male">Male</option>
-            </select>
-          </Field>
-        </div>
+        <Field label="Voice type">
+          <select value={persona.gender} onChange={(e) => set({ gender: e.target.value })}>
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+          </select>
+        </Field>
+        <fieldset className="look">
+          <legend>Look</legend>
+          <div className="swatches">
+            {[
+              ['skin', 'Skin'],
+              ['hair', 'Hair'],
+              ['shirt', 'Top'],
+              ['pants', 'Trousers'],
+            ].map(([k, label]) => (
+              <label key={k} className="swatch-field">
+                <input type="color" value={persona.look[k]} onChange={(e) => setLook({ [k]: e.target.value })} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="two">
+            <Field label="Hair style">
+              <select value={persona.look.hairStyle} onChange={(e) => setLook({ hairStyle: e.target.value })}>
+                <option value="short">Short</option>
+                <option value="bob">Bob</option>
+                <option value="long">Long</option>
+                <option value="bun">Bun</option>
+                <option value="none">Shaved</option>
+              </select>
+            </Field>
+            <div className="checks">
+              <label>
+                <input type="checkbox" checked={persona.look.glasses} onChange={(e) => setLook({ glasses: e.target.checked })} /> Glasses
+              </label>
+              <label>
+                <input type="checkbox" checked={persona.look.beard} onChange={(e) => setLook({ beard: e.target.checked })} /> Beard
+              </label>
+            </div>
+          </div>
+        </fieldset>
         {ttsProvider === 'elevenlabs' && (
           <Field label="ElevenLabs voice ID" hint="Find IDs in ElevenLabs › Voices.">
             <input value={persona.voice.elevenlabs} onChange={(e) => setVoice({ elevenlabs: e.target.value })} spellCheck={false} />
@@ -115,9 +147,14 @@ function PersonaEditor({ persona, onChange, voices, onTest, testDisabled, ttsPro
             <input type="range" min="0.7" max="1.4" step="0.01" value={persona.voice.rate} onChange={(e) => setVoice({ rate: +e.target.value })} />
           </Field>
         </div>
-        <button className="btn" onClick={() => onTest(persona)} disabled={testDisabled}>
-          Hear {persona.name}
-        </button>
+        <div className="row">
+          <button className="btn" onClick={() => onTest(persona)} disabled={testDisabled}>
+            Hear {persona.name}
+          </button>
+          <button className="btn ghost danger" onClick={onRemove} disabled={!canRemove} title={canRemove ? '' : `A meeting needs at least ${MIN_TEAM} people`}>
+            Remove from table
+          </button>
+        </div>
       </div>
     </details>
   )
@@ -325,6 +362,40 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
         </section>
 
         <section>
+          <h3>Conversation style</h3>
+          <Segmented
+            label="Conversation style"
+            value={settings.conversation.mode}
+            options={[
+              ['freeflow', 'Free flow'],
+              ['mediator', 'Mediator'],
+            ]}
+            onChange={(v) => update((s) => (s.conversation.mode = v))}
+          />
+          <p className="fine">
+            {settings.conversation.mode === 'mediator'
+              ? 'The mediator frames each question, invites people by name and keeps the meeting moving.'
+              : 'Anyone jumps in when the discussion calls for them.'}
+          </p>
+          <Field label={settings.conversation.mode === 'mediator' ? 'Mediator' : 'Opens and closes the meeting'}>
+            <select value={settings.conversation.mediatorId} onChange={(e) => update((s) => (s.conversation.mediatorId = e.target.value))}>
+              <option value="">Automatic ({findManager(settings.personas).name})</option>
+              {settings.personas.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}, {p.role}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field
+            label={`Lines per API call: ${settings.conversation.batchSize}`}
+            hint={`About ${Math.ceil(settings.maxTurns / settings.conversation.batchSize)} API calls per meeting, plus one each time you jump in. Writing more lines at once uses fewer calls, but the lines already written are dropped when you interrupt.`}
+          >
+            <input type="range" min="1" max="10" step="1" value={settings.conversation.batchSize} onChange={(e) => update((s) => (s.conversation.batchSize = +e.target.value))} />
+          </Field>
+        </section>
+
+        <section>
           <h3>Meeting length</h3>
           <Field label={`${settings.maxTurns} lines before the manager wraps up`}>
             <input type="range" min="8" max="60" step="1" value={settings.maxTurns} onChange={(e) => update((s) => (s.maxTurns = +e.target.value))} />
@@ -333,7 +404,9 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
 
         <section>
           <h3>Team</h3>
-          <p className="fine">Changes apply from the next line.</p>
+          <p className="fine">
+            {settings.personas.length} people at the table. Changes apply from the next line{running ? '; pause the meeting to add or remove people' : ''}.
+          </p>
           {settings.personas.map((p, i) => (
             <PersonaEditor
               key={p.id}
@@ -343,11 +416,28 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
               testDisabled={running}
               onTest={(persona) => engine.testVoice(persona)}
               onChange={(np) => update((s) => (s.personas[i] = np))}
+              canRemove={!running && settings.personas.length > MIN_TEAM}
+              onRemove={() =>
+                update((s) => {
+                  s.personas.splice(i, 1)
+                  if (s.conversation.mediatorId === p.id) s.conversation.mediatorId = ''
+                })
+              }
             />
           ))}
-          <button className="btn ghost" onClick={() => update((s) => (s.personas = defaultPersonas()))}>
-            Reset team to defaults
-          </button>
+          <div className="row">
+            <button
+              className="btn"
+              disabled={running || settings.personas.length >= MAX_TEAM}
+              onClick={() => update((s) => s.personas.push(newPersona(s.personas)))}
+            >
+              Add a teammate
+            </button>
+            <button className="btn ghost" disabled={running} onClick={() => update((s) => (s.personas = defaultPersonas()))}>
+              Reset team to defaults
+            </button>
+          </div>
+          {settings.personas.length >= MAX_TEAM && <p className="fine">The table seats up to {MAX_TEAM} people.</p>}
         </section>
       </aside>
     </div>

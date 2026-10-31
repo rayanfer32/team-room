@@ -14,7 +14,7 @@ function statusLine(meeting, personas) {
   return 'In session'
 }
 
-export default function MeetingPanel({ meeting, settings, topic, setTopic, onStart, onPause, onResume, onStep, onEnd, onOpenSettings }) {
+export default function MeetingPanel({ meeting, settings, host, topic, setTopic, onStart, onPause, onResume, onStep, onEnd, onOpenSettings, onSetMode }) {
   const { status, transcript, error, note } = meeting
   const teamTurns = transcript.filter((l) => l.speaker !== 'you').length
   const canEditTopic = status === 'idle' || status === 'ended'
@@ -66,14 +66,29 @@ export default function MeetingPanel({ meeting, settings, topic, setTopic, onSta
               </button>
             ))}
           </div>
+          <div className="mode-row">
+            <div className="segmented small" role="radiogroup" aria-label="Conversation style">
+              {[
+                ['freeflow', 'Free flow'],
+                ['mediator', 'Mediator'],
+              ].map(([v, label]) => (
+                <button key={v} role="radio" aria-checked={settings.conversation.mode === v} className={settings.conversation.mode === v ? 'on' : ''} onClick={() => onSetMode(v)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className="fine">
+              {settings.conversation.mode === 'mediator' ? `${host.name} moderates` : 'Anyone can jump in'}
+            </span>
+          </div>
           <button className="btn primary" onClick={onStart} disabled={!topic.trim()}>
             {status === 'ended' ? 'Start a new meeting' : 'Start meeting'}
           </button>
           <p className="fine">
-            Talking with {llm.label}, voices by {voice.label}
-            {settings.tts.provider !== 'browser' ? ', browser voice as backup' : ''}.{' '}
+            {settings.personas.length} people at the table. Talking with {llm.label}, voices by {voice.label}
+            {settings.conversation.batchSize > 1 ? `, ${settings.conversation.batchSize} lines per API call` : ''}.{' '}
             <button className="link" onClick={onOpenSettings}>
-              Change
+              Edit team and settings
             </button>
           </p>
         </div>
@@ -83,6 +98,11 @@ export default function MeetingPanel({ meeting, settings, topic, setTopic, onSta
           <div className="meter" aria-label={`${teamTurns} of ${settings.maxTurns} lines spoken`}>
             <span style={{ width: `${Math.min(100, (teamTurns / settings.maxTurns) * 100)}%` }} />
           </div>
+          <p className="fine stats">
+            {settings.conversation.mode === 'mediator' ? `${host.name} is moderating. ` : ''}
+            {teamTurns} of {settings.maxTurns} lines, {meeting.calls} API {meeting.calls === 1 ? 'call' : 'calls'}
+            {meeting.queued ? `, ${meeting.queued} written ahead` : ''}.
+          </p>
           <div className="row">
             {status === 'running' ? (
               <button className="btn primary" onClick={onPause}>

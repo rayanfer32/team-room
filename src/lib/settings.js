@@ -1,4 +1,4 @@
-import { DEFAULT_PERSONAS } from '../data/personas'
+import { DEFAULT_PERSONAS, MAX_TEAM, MIN_TEAM, newPersona } from '../data/personas'
 
 const KEY = 'team-room-settings-v1'
 
@@ -23,10 +23,21 @@ export const DEFAULT_SETTINGS = {
     kokoroDevice: 'auto',
   },
   maxTurns: 24,
+  conversation: {
+    mode: 'freeflow', // 'freeflow' | 'mediator'
+    mediatorId: '', // empty = whoever has a manager/lead role
+    batchSize: 1, // lines written per API call
+  },
   personas: DEFAULT_PERSONAS,
 }
 
 const clone = (o) => JSON.parse(JSON.stringify(o))
+
+/** Fill in any fields an older saved persona is missing. */
+function mergePersona(p) {
+  const base = DEFAULT_PERSONAS.find((d) => d.id === p.id) || newPersona()
+  return { ...base, ...p, id: p.id || base.id, look: { ...base.look, ...p.look }, voice: { ...base.voice, ...p.voice } }
+}
 
 export function loadSettings() {
   try {
@@ -44,14 +55,10 @@ export function loadSettings() {
         models: { ...d.llm.models, ...s.llm?.models },
       },
       tts: { ...d.tts, ...s.tts },
+      conversation: { ...d.conversation, ...s.conversation },
       personas:
-        Array.isArray(s.personas) && s.personas.length === d.personas.length
-          ? s.personas.map((p, i) => ({
-              ...d.personas[i],
-              ...p,
-              look: { ...d.personas[i].look, ...p.look },
-              voice: { ...d.personas[i].voice, ...p.voice },
-            }))
+        Array.isArray(s.personas) && s.personas.length >= MIN_TEAM && s.personas.length <= MAX_TEAM
+          ? s.personas.map((p) => mergePersona(p))
           : clone(d.personas),
     }
   } catch {

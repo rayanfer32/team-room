@@ -45,7 +45,7 @@ async function post(url, headers, body, signal) {
 }
 
 /** One completion. Returns the raw text the model produced. */
-export async function complete({ provider, apiKey, model, system, prompt, signal }) {
+export async function complete({ provider, apiKey, model, system, prompt, signal, maxTokens = 400 }) {
   const info = LLM_PROVIDERS[provider]
   if (!info) throw new Error(`Unknown model provider "${provider}".`)
   if (info.needsKey && !apiKey) throw new Error(`Add your ${info.keyName} in Settings to start the meeting.`)
@@ -56,7 +56,7 @@ export async function complete({ provider, apiKey, model, system, prompt, signal
       const data = await post(
         '/proxy/anthropic/v1/messages',
         { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        { model, max_tokens: 400, temperature: 0.9, system, messages: [{ role: 'user', content: prompt }] },
+        { model, max_tokens: maxTokens, temperature: 0.9, system, messages: [{ role: 'user', content: prompt }] },
         signal,
       )
       return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')
@@ -68,7 +68,7 @@ export async function complete({ provider, apiKey, model, system, prompt, signal
         {
           model,
           temperature: 0.9,
-          max_tokens: 400,
+          max_tokens: maxTokens,
           response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: system },
@@ -86,7 +86,7 @@ export async function complete({ provider, apiKey, model, system, prompt, signal
         {
           systemInstruction: { parts: [{ text: system }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.9, maxOutputTokens: 2048, responseMimeType: 'application/json' },
+          generationConfig: { temperature: 0.9, maxOutputTokens: Math.max(2048, maxTokens * 2), responseMimeType: 'application/json' },
         },
         signal,
       )
@@ -100,7 +100,7 @@ export async function complete({ provider, apiKey, model, system, prompt, signal
           model,
           stream: false,
           format: 'json',
-          options: { temperature: 0.9 },
+          options: { temperature: 0.9, num_predict: maxTokens },
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: prompt },
