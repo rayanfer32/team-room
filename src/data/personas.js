@@ -94,3 +94,31 @@ export function newPersona(existing = []) {
     },
   }
 }
+
+/** Default mock-interview panel. Editable in Settings → Interview panel. */
+export const DEFAULT_PANEL = [
+  {
+    name: 'Anita',
+    role: 'Hiring Manager',
+    gender: 'female',
+    traits: 'Leads the panel. Friendly and structured. Cares about ownership, impact and how the candidate works with a team.',
+    look: { skin: '#b07848', hair: '#1f1512', hairStyle: 'bob', shirt: '#4c6b8a', pants: '#2d2f36', glasses: true, beard: false },
+    voice: { elevenlabs: 'EXAVITQu4vr4xnSDxMaL', fish: '', kokoro: 'af_heart', browserVoice: '', pitch: 1.05, rate: 1 },
+  },
+  {
+    name: 'Karthik',
+    role: 'Tech Lead',
+    gender: 'male',
+    traits: 'Goes deep on technical detail. Asks how things work under the hood, about trade-offs, and what the candidate would do differently.',
+    look: { skin: '#8d5a3b', hair: '#17110e', hairStyle: 'short', shirt: '#3d8fa8', pants: '#2f3a33', glasses: false, beard: true },
+    voice: { elevenlabs: 'TxGEqnHWrfWFTfGW9XjX', fish: '', kokoro: 'am_michael', browserVoice: '', pitch: 0.92, rate: 1.03 },
+  },
+  {
+    name: 'Joanna',
+    role: 'HR Partner',
+    gender: 'female',
+    traits: 'Warm and attentive. Asks about motivation, conflict, growth and culture fit, and listens for specific examples.',
+    look: { skin: '#e3bf9a', hair: '#6b4226', hairStyle: 'long', shirt: '#b5577a', pants: '#3a3a44', glasses: false, beard: false },
+    voice: { elevenlabs: '21m00Tcm4TlvDq8ikWAM', fish: '', kokoro: 'bf_emma', browserVoice: '', pitch: 1.1, rate: 1 },
+  },
+]

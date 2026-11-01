@@ -1,0 +1,15 @@
+name = "team-room"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+# The built site. Run `npm run build` in the project root first (the deploy script does this).
+[assets]
+directory = "../dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[vars]
+# Other sites allowed to use this relay, comma-separated (for example "http://localhost:5173").
+# Leave empty to allow only the site this Worker serves. "*" allows any site; avoid that on a public Worker.
+ALLOWED_ORIGINS = ""

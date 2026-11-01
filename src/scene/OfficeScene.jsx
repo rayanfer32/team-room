@@ -1,8 +1,8 @@
-import { useEffect, useMemo } from 'react'
-import { Canvas, useThree } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
+import { useEffect, useMemo, useRef } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Html, OrbitControls } from '@react-three/drei'
 import Office, { MeetingTable } from './Office'
-import Person from './Person'
+import Person, { Chair } from './Person'
 
 /** Table grows a little for bigger teams so nobody is squeezed. */
 export const tableRadius = (n) => Math.max(1.6, 1.6 + (n - 5) * 0.3)
@@ -22,25 +22,66 @@ function CameraFit({ count }) {
 }
 
 /** Seats around the table; the manager sits opposite the camera, facing it. */
-function useSeats(personas, hostName) {
+/**
+ * Seats around the table. The host sits opposite the camera, facing it.
+ * In an interview, your empty chair takes the seat nearest the camera, facing the panel.
+ */
+function useSeats(personas, hostName, candidate) {
   return useMemo(() => {
-    const SEAT_RADIUS = tableRadius(personas.length) + 0.45
+    const total = personas.length + (candidate ? 1 : 0)
+    const SEAT_RADIUS = tableRadius(total) + 0.45
     const facing = Math.atan2(CAMERA[0], CAMERA[2]) + Math.PI
-    const mi = Math.max(0, personas.findIndex((p) => p.name === hostName))
-    const list = personas.map((p, i) => {
-      const angle = facing + ((i - mi) * Math.PI * 2) / personas.length
+    const seat = (k, name) => {
+      const angle = facing + (k * Math.PI * 2) / total
       const x = Math.sin(angle) * SEAT_RADIUS
       const z = Math.cos(angle) * SEAT_RADIUS - 0.2
-      return { name: p.name, angle, x, z, rot: Math.atan2(-Math.sin(angle), -Math.cos(angle)) }
-    })
+      return { name, angle, x, z, rot: Math.atan2(-Math.sin(angle), -Math.cos(angle)) }
+    }
+    const order = [...personas]
+    const hi = Math.max(0, order.findIndex((p) => p.name === hostName))
+    const host = order.splice(hi, 1)[0]
+    const youSlot = candidate ? Math.round(total / 2) : -1
+    const list = []
+    let next = 0
+    for (let k = 0; k < total; k++) {
+      if (k === youSlot) list.push({ ...seat(k, 'You'), candidate: true })
+      else if (k === 0) list.push(seat(k, host.name))
+      else list.push(seat(k, order[next++].name))
+    }
     const byName = Object.fromEntries(list.map((s) => [s.name, s]))
     return { list, byName }
-  }, [personas, hostName])
+  }, [personas, hostName, candidate])
 }
 
-export default function OfficeScene({ personas, hostName, live, speaking, line, topic }) {
-  const seats = useSeats(personas, hostName)
-  const tableR = tableRadius(personas.length)
+/** Your empty chair in an interview; it lights up when it's your turn. */
+function CandidateSeat({ seat, live }) {
+  const ring = useRef()
+  useFrame((state, dt) => {
+    const on = live.focus === 'You'
+    const m = ring.current.material
+    m.opacity += ((on ? 0.85 : 0.15) - m.opacity) * (1 - Math.exp(-dt * 4))
+    ring.current.scale.setScalar(1 + (on ? Math.sin(state.clock.elapsedTime * 4) * 0.04 : 0))
+  })
+  return (
+    <group position={[seat.x, 0, seat.z]} rotation={[0, seat.rot, 0]}>
+      <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]}>
+        <ringGeometry args={[0.5, 0.62, 48]} />
+        <meshBasicMaterial color="#f2b134" transparent opacity={0.15} toneMapped={false} />
+      </mesh>
+      <Chair accent="#3d4a43" />
+      <Html position={[0, 1.25, 0]} center zIndexRange={[20, 0]} pointerEvents="none">
+        <div className="nametag you-tag">
+          <b>You</b>
+          <span className="role">Candidate</span>
+        </div>
+      </Html>
+    </group>
+  )
+}
+
+export default function OfficeScene({ personas, hostName, candidate, live, speaking, line, boardView }) {
+  const seats = useSeats(personas, hostName, candidate)
+  const tableR = tableRadius(seats.list.length)
   return (
     <Canvas shadows dpr={[1, 2]} camera={{ position: CAMERA, fov: 42, near: 0.1, far: 80 }} gl={{ antialias: true }}>
       <color attach="background" args={['#1e2b25']} />
@@ -65,7 +106,7 @@ export default function OfficeScene({ personas, hostName, live, speaking, line, 
       />
       <pointLight position={[1.2, 2.6, -6.2]} intensity={5} distance={7} decay={2} color="#d8ecff" />
 
-      <Office topic={topic} tableR={tableR} />
+      <Office boardView={boardView} tableR={tableR} />
       <group position={[0, 0, -0.2]}>
         <MeetingTable seatsList={seats.list} radius={tableR} />
       </group>
@@ -80,8 +121,9 @@ export default function OfficeScene({ personas, hostName, live, speaking, line, 
           line={speaking === p.name ? line : null}
         />
       ))}
+      {candidate && seats.byName.You && <CandidateSeat seat={seats.byName.You} live={live} />}
 
-      <CameraFit count={personas.length} />
+      <CameraFit count={seats.list.length} />
       <OrbitControls
         makeDefault
         target={[-0.3, 0.9, -0.5]}

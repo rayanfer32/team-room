@@ -1,0 +1,13 @@
+{
+  "name": "team-room-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:site": "npm --prefix .. run build",
+    "dev": "npm run build:site && wrangler dev",
+    "deploy": "npm run build:site && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.20.0"
+  }
+}

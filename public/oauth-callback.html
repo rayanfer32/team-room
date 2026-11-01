@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Signing in…</title>
+    <style>
+      body { font-family: system-ui, sans-serif; background: #18251f; color: #eef3ea; display: grid; place-items: center; height: 100vh; margin: 0; }
+      p { max-width: 320px; text-align: center; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <p id="msg">Finishing sign-in…</p>
+    <script>
+      // Hands the authorization result back to Team Room, then closes.
+      const q = new URLSearchParams(location.search)
+      const data = { type: 'mcp-oauth', code: q.get('code'), state: q.get('state'), iss: q.get('iss'), error: q.get('error'), error_description: q.get('error_description') }
+      if (window.opener) {
+        window.opener.postMessage(data, location.origin)
+        document.getElementById('msg').textContent = data.error ? 'Sign-in was cancelled or failed. You can close this window.' : 'Signed in. You can close this window.'
+        setTimeout(() => window.close(), 400)
+      } else {
+        document.getElementById('msg').textContent = 'Open this from Team Room to finish signing in.'
+      }
+    </script>
+  </body>
+</html>

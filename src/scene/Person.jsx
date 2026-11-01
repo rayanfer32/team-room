@@ -41,7 +41,7 @@ function Capsule({ from, to, radius, color, rough, castShadow = true }) {
   )
 }
 
-function Chair({ accent }) {
+export function Chair({ accent }) {
   return (
     <group>
       <RoundedBox args={[0.6, 0.1, 0.58]} radius={0.045} smoothness={4} position={[0, 0.43, -0.02]} castShadow receiveShadow>
@@ -259,7 +259,8 @@ export default function Person({ persona, seat, seats, live, speaking, line }) {
     let yaw = Math.sin(t * 0.23) * 0.35
     let pitch = 0.06
     let lean = 0
-    const other = live.speaking && live.speaking !== persona.name && seats[live.speaking]
+    const target = live.speaking && live.speaking !== persona.name ? live.speaking : !live.speaking ? live.focus : null
+    const other = target && seats[target]
     if (other) {
       const world = Math.atan2(other.x - seat.x, other.z - seat.z)
       yaw = THREE.MathUtils.clamp(wrap(world - seat.rot), -1.25, 1.25)

@@ -4,6 +4,8 @@ import { TTS_PROVIDERS } from '../lib/tts'
 import { defaultPersonas, defaultPrompts } from '../lib/settings'
 import { DEFAULT_PROMPTS, PROMPT_PARTS, buildPrompt } from '../lib/prompts'
 import { MAX_TEAM, MIN_TEAM, newPersona } from '../data/personas'
+import { defaultPanel } from '../lib/settings'
+import ToolsSettings, { PersonTools } from './ToolsSettings'
 import { findManager, hostOf, teamProblem } from '../lib/engine'
 import { kokoro, KOKORO_VOICES, resolveDevice } from '../lib/kokoro'
 
@@ -41,7 +43,7 @@ function SecretInput({ value, onChange, placeholder }) {
   )
 }
 
-function PersonaEditor({ persona, onChange, voices, onTest, testDisabled, ttsProvider, onRemove, canRemove }) {
+function PersonaEditor({ persona, onChange, voices, onTest, testDisabled, ttsProvider, onRemove, canRemove, showModel, removeLabel = 'Remove from table', settings }) {
   const set = (patch) => onChange({ ...persona, ...patch })
   const setVoice = (patch) => onChange({ ...persona, voice: { ...persona.voice, ...patch } })
   const setLook = (patch) => onChange({ ...persona, look: { ...persona.look, ...patch } })
@@ -64,6 +66,23 @@ function PersonaEditor({ persona, onChange, voices, onTest, testDisabled, ttsPro
         <Field label="Personality" hint="How they think, what they care about, how they talk.">
           <textarea rows={3} value={persona.traits} onChange={(e) => set({ traits: e.target.value })} />
         </Field>
+        {showModel && (
+          <div className="two">
+            <Field label="Own model provider" hint="Used in one-agent-per-person mode.">
+              <select value={persona.llm?.provider || ''} onChange={(e) => set({ llm: { ...persona.llm, provider: e.target.value } })}>
+                <option value="">Same as everyone</option>
+                {Object.entries(LLM_PROVIDERS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Own model name" hint="Empty uses that provider's model.">
+              <input value={persona.llm?.model || ''} onChange={(e) => set({ llm: { ...persona.llm, model: e.target.value } })} spellCheck={false} placeholder="Default" />
+            </Field>
+          </div>
+        )}
         <Field label="Voice type">
           <select value={persona.gender} onChange={(e) => set({ gender: e.target.value })}>
             <option value="female">Female</option>
@@ -148,12 +167,18 @@ function PersonaEditor({ persona, onChange, voices, onTest, testDisabled, ttsPro
             <input type="range" min="0.7" max="1.4" step="0.01" value={persona.voice.rate} onChange={(e) => setVoice({ rate: +e.target.value })} />
           </Field>
         </div>
+        {settings && (
+          <fieldset className="look">
+            <legend>Tools {persona.name} can use</legend>
+            <PersonTools persona={persona} settings={settings} onChange={(tools) => onChange({ ...persona, tools })} />
+          </fieldset>
+        )}
         <div className="row">
           <button className="btn" onClick={() => onTest(persona)} disabled={testDisabled}>
             Hear {persona.name}
           </button>
           <button className="btn ghost danger" onClick={onRemove} disabled={!canRemove} title={canRemove ? '' : `A meeting needs at least ${MIN_TEAM} people`}>
-            Remove from table
+            {removeLabel}
           </button>
         </div>
       </div>
@@ -212,9 +237,24 @@ function KokoroSettings({ device, onDevice }) {
 
 function PromptEditor({ prompts, onChange, onResetAll, preview }) {
   const groups = [...new Set(PROMPT_PARTS.map((p) => p.group))]
+  const [group, setGroup] = useState(groups[0])
+  const edited = (g) => PROMPT_PARTS.filter((p) => p.group === g && prompts[p.key] != null && prompts[p.key] !== DEFAULT_PROMPTS[p.key]).length
+  const shown = group === 'all' ? groups : groups.filter((g) => g === group)
   return (
     <div className="prompts">
-      {groups.map((g) => (
+      <Field label="Show">
+        <select value={group} onChange={(e) => setGroup(e.target.value)}>
+          {groups.map((g) => (
+            <option key={g} value={g}>
+              {g}
+              {edited(g) ? ` (${edited(g)} edited)` : ''}
+            </option>
+          ))}
+          <option value="all">Everything</option>
+          <option value="preview">Preview the assembled prompt</option>
+        </select>
+      </Field>
+      {group !== 'preview' && shown.map((g) => (
         <div key={g} className="prompt-group">
           <h4>{g}</h4>
           {PROMPT_PARTS.filter((p) => p.group === g).map((part) => {
@@ -259,10 +299,8 @@ function PromptEditor({ prompts, onChange, onResetAll, preview }) {
           })}
         </div>
       ))}
-      <details className="prompt preview">
-        <summary>
-          <span>Preview the assembled prompt</span>
-        </summary>
+      {group === 'preview' && (
+      <div className="prompt preview open-preview">
         <div className="prompt-body">
           <p className="fine">What the model receives for the first line of a meeting with the current team and settings.</p>
           <h4>System</h4>
@@ -270,7 +308,8 @@ function PromptEditor({ prompts, onChange, onResetAll, preview }) {
           <h4>Request</h4>
           <pre>{preview.prompt}</pre>
         </div>
-      </details>
+      </div>
+      )}
       <button className="btn ghost" onClick={onResetAll}>
         Reset all prompts
       </button>
@@ -278,7 +317,26 @@ function PromptEditor({ prompts, onChange, onResetAll, preview }) {
   )
 }
 
-export default function SettingsDrawer({ open, onClose, settings, setSettings, engine, running, topic }) {
+const TABS = [
+  ['model', 'Model'],
+  ['voices', 'Voices'],
+  ['conversation', 'Conversation'],
+  ['people', 'People'],
+  ['prompts', 'Prompts'],
+  ['tools', 'Tools'],
+  ['connection', 'Connection'],
+]
+
+export default function SettingsDrawer({ open, onClose, settings, setSettings, engine, running, topic, initialTab, initialPeople }) {
+  // The drawer stays mounted while closed, so the last tab is remembered between visits.
+  const [tab, setTab] = useState('model')
+  const [peopleTab, setPeopleTab] = useState('team')
+  useEffect(() => {
+    if (!open) return
+    if (initialTab) setTab(initialTab)
+    if (initialPeople) setPeopleTab(initialPeople)
+  }, [open, initialTab, initialPeople])
+
   const closeRef = useRef(null)
   const [voices, setVoices] = useState([])
 
@@ -298,6 +356,12 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
 
   if (!open) return null
   const { llm, tts } = settings
+  const alerts = {
+    model: LLM_PROVIDERS[llm.provider]?.needsKey && !llm.keys[llm.provider] ? 'API key missing' : null,
+    people: teamProblem(settings.personas) || teamProblem(settings.interview.panel) ? 'A name needs fixing' : null,
+    connection: settings.connection === 'worker' && !settings.workerUrl?.trim() ? 'Worker URL missing' : null,
+    tools: settings.mcp.servers.some((sv) => sv.enabled && sv.error) ? 'A server needs attention' : null,
+  }
   const info = LLM_PROVIDERS[llm.provider]
   const update = (fn) =>
     setSettings((s) => {
@@ -310,6 +374,7 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div className="drawer-top">
         <header>
           <h2 id="settings-title">Settings</h2>
           <button ref={closeRef} className="btn ghost" onClick={onClose}>
@@ -317,27 +382,27 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
           </button>
         </header>
 
-        <section>
-          <h3>Connection</h3>
-          <Segmented
-            label="Connection"
-            value={settings.connection}
-            options={[
-              ['proxy', 'Proxy (dev server)'],
-              ['direct', 'Direct from browser'],
-            ]}
-            onChange={(v) => {
-              touchVoices()
-              update((s) => (s.connection = v))
-            }}
-          />
-          <p className="fine">
-            {settings.connection === 'proxy'
-              ? 'Calls go through the local Vite server (npm run dev or npm run preview), which avoids browser CORS blocks for every provider.'
-              : 'The browser calls each API itself, so it also works as a static site. Some providers block direct browser calls (CORS). If you see a "couldn’t reach" error, switch back to Proxy. Ollama needs OLLAMA_ORIGINS="*" in this mode.'}
-          </p>
-        </section>
+        <nav className="settings-tabs" role="tablist" aria-label="Settings sections">
+          {TABS.map(([key, label]) => (
+            <button
+              key={key}
+              role="tab"
+              id={`tab-${key}`}
+              aria-selected={tab === key}
+              aria-controls={`panel-${key}`}
+              className={`stab${tab === key ? ' on' : ''}`}
+              onClick={() => setTab(key)}
+            >
+              {label}
+              {alerts[key] && <span className="alert-dot" title={alerts[key]} aria-label={alerts[key]} />}
+            </button>
+          ))}
+        </nav>
+        </div>
 
+        <div className="settings-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+          {tab === 'model' && (
+            <>
         <section>
           <h3>Conversation model</h3>
           <Segmented
@@ -375,8 +440,29 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
           <Field label="Model name" hint="Any model your provider offers.">
             <input value={llm.models[llm.provider]} onChange={(e) => update((s) => (s.llm.models[s.llm.provider] = e.target.value))} spellCheck={false} />
           </Field>
+          {llm.provider === 'groq' && /gpt-oss/i.test(llm.models.groq) && (
+            <Field
+              label="Reasoning effort"
+              hint="gpt-oss models think before answering, and that thinking uses part of the token budget. Low is fastest and least likely to run out of room before writing the reply."
+            >
+              <Segmented
+                label="Reasoning effort"
+                value={llm.reasoningEffort || 'low'}
+                options={[
+                  ['low', 'Low'],
+                  ['medium', 'Medium'],
+                  ['high', 'High'],
+                ]}
+                onChange={(v) => update((s) => (s.llm.reasoningEffort = v))}
+              />
+            </Field>
+          )}
         </section>
+            </>
+          )}
 
+          {tab === 'voices' && (
+            <>
         <section>
           <h3>Voices</h3>
           <Segmented
@@ -450,7 +536,11 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
               : 'If the cloud voice fails or has no key, the browser voice takes over so the meeting keeps going.'}
           </p>
         </section>
+            </>
+          )}
 
+          {tab === 'conversation' && (
+            <>
         <section>
           <h3>Conversation style</h3>
           <Segmented
@@ -477,41 +567,101 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
               ))}
             </select>
           </Field>
+          <Field label="Who writes the lines">
+            <Segmented
+              label="Who writes the lines"
+              value={settings.conversation.engine}
+              options={[
+                ['writer', 'One writer'],
+                ['agents', 'One agent per person'],
+              ]}
+              onChange={(v) => update((s) => (s.conversation.engine = v))}
+            />
+          </Field>
+          {settings.conversation.engine === 'agents' ? (
+            <>
+              <Field label="How the next speaker is chosen">
+                <Segmented
+                  label="Turn-taking"
+                  value={settings.conversation.turnTaking}
+                  options={[
+                    ['director', 'Director'],
+                    ['bids', 'Bids'],
+                    ['mediator', 'Mediator agent'],
+                  ]}
+                  onChange={(v) => update((s) => (s.conversation.turnTaking = v))}
+                />
+              </Field>
+              <p className="fine">
+                {
+                  {
+                    director: 'A director call picks who speaks, then that person’s own agent writes the line. Two API calls per line.',
+                    bids: `Every person except the last speaker bids, in parallel, with how much they want to speak and what they’d say. The highest bid is spoken. ${Math.max(1, settings.personas.length - 1)} API calls per line, which can hit free-tier rate limits.`,
+                    mediator: `${hostOf(settings, 'meeting').name}’s agent moderates and names who speaks next. One API call per line.`,
+                  }[settings.conversation.turnTaking]
+                }{' '}
+                Each agent keeps private notes during the meeting, and can use its own model (set under Team).
+              </p>
+            </>
+          ) : null}
+          {settings.conversation.engine === 'writer' && (
           <Field
             label={`Lines per API call: ${settings.conversation.batchSize}`}
             hint={`About ${Math.ceil(settings.maxTurns / settings.conversation.batchSize)} API calls per meeting, plus one each time you jump in. Writing more lines at once uses fewer calls, but the lines already written are dropped when you interrupt.`}
           >
             <input type="range" min="1" max="10" step="1" value={settings.conversation.batchSize} onChange={(e) => update((s) => (s.conversation.batchSize = +e.target.value))} />
           </Field>
+          )}
         </section>
-
         <section>
-          <h3>Prompts</h3>
-          <p className="fine">Every piece of text sent to the model. Placeholders in braces are filled in for each request.</p>
-          <PromptEditor
-            prompts={settings.prompts}
-            onChange={(key, value) => update((s) => (s.prompts[key] = value))}
-            onResetAll={() => update((s) => (s.prompts = defaultPrompts()))}
-            preview={buildPrompt({
-              prompts: settings.prompts,
-              personas: settings.personas,
-              topic: topic?.trim() || 'your topic',
-              transcript: [],
-              phases: [{ key: 'opening', lineRef: settings.conversation.batchSize > 1 ? 'Line 1' : 'This line' }],
-              mode: settings.conversation.mode,
-              host: hostOf(settings),
-              count: settings.conversation.batchSize,
-            })}
+          <h3>Whiteboard</h3>
+          <Segmented
+            label="Whiteboard updates"
+            value={settings.board.mode}
+            options={[
+              ['inline', 'In each reply'],
+              ['summary', 'Summary call'],
+              ['off', 'Off'],
+            ]}
+            onChange={(v) => update((s) => (s.board.mode = v))}
           />
+          {settings.board.mode === 'summary' && (
+            <Field label={`Update every ${settings.board.every} lines`}>
+              <input type="range" min="2" max="20" step="1" value={settings.board.every} onChange={(e) => update((s) => (s.board.every = +e.target.value))} />
+            </Field>
+          )}
+          <p className="fine">
+            {
+              {
+                inline: 'The model adds new decisions, action items and open questions as part of each reply. No extra API calls.',
+                summary: 'A separate call rewrites the whole board every few lines, and once more at the end. Tidier, but uses extra calls.',
+                off: 'The whiteboard shows only the topic and agenda.',
+              }[settings.board.mode]
+            }
+          </p>
         </section>
-
         <section>
           <h3>Meeting length</h3>
           <Field label={`${settings.maxTurns} lines before the manager wraps up`}>
             <input type="range" min="8" max="60" step="1" value={settings.maxTurns} onChange={(e) => update((s) => (s.maxTurns = +e.target.value))} />
           </Field>
         </section>
+            </>
+          )}
 
+          {tab === 'people' && (
+            <>
+              <Segmented
+                label="Who to edit"
+                value={peopleTab}
+                options={[
+                  ['team', `Team (${settings.personas.length})`],
+                  ['panel', `Interview panel (${settings.interview.panel.length})`],
+                ]}
+                onChange={setPeopleTab}
+              />
+              {peopleTab === 'team' ? (
+                <>
         <section>
           <h3>Team</h3>
           {teamProblem(settings.personas) && (
@@ -530,6 +680,8 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
               voices={voices}
               ttsProvider={tts.provider}
               testDisabled={running}
+              showModel={settings.conversation.engine === 'agents'}
+              settings={settings}
               onTest={(persona) => engine.testVoice(persona)}
               onChange={(np) =>
                 update((s) => {
@@ -561,6 +713,107 @@ export default function SettingsDrawer({ open, onClose, settings, setSettings, e
           </div>
           {settings.personas.length >= MAX_TEAM && <p className="fine">The table seats up to {MAX_TEAM} people.</p>}
         </section>
+                </>
+              ) : (
+                <>
+        <section>
+          <h3>Interview panel</h3>
+          {teamProblem(settings.interview.panel) && (
+            <p className="msg error" role="alert">
+              {teamProblem(settings.interview.panel)}
+            </p>
+          )}
+          <p className="fine">
+            The people who interview you in mock interview mode. The one with a manager or lead role opens and closes, and the others take turns asking. Your empty chair faces them.
+          </p>
+          {settings.interview.panel.map((p, i) => (
+            <PersonaEditor
+              key={i}
+              persona={p}
+              voices={voices}
+              ttsProvider={tts.provider}
+              testDisabled={running}
+              onTest={(persona) => engine.testVoice(persona)}
+              settings={settings}
+              onChange={(np) => update((s) => (s.interview.panel[i] = np))}
+              canRemove={!running && settings.interview.panel.length > 1}
+              removeLabel="Remove from panel"
+              onRemove={() => update((s) => s.interview.panel.splice(i, 1))}
+            />
+          ))}
+          <div className="row">
+            <button className="btn" disabled={running || settings.interview.panel.length >= 5} onClick={() => update((s) => s.interview.panel.push(newPersona(s.interview.panel)))}>
+              Add a panelist
+            </button>
+            <button className="btn ghost" disabled={running} onClick={() => update((s) => (s.interview.panel = defaultPanel()))}>
+              Reset panel to defaults
+            </button>
+          </div>
+        </section>
+                </>
+              )}
+            </>
+          )}
+
+          {tab === 'prompts' && (
+            <>
+        <section>
+          <h3>Prompts</h3>
+          <p className="fine">Every piece of text sent to the model. Placeholders in braces are filled in for each request.</p>
+          <PromptEditor
+            prompts={settings.prompts}
+            onChange={(key, value) => update((s) => (s.prompts[key] = value))}
+            onResetAll={() => update((s) => (s.prompts = defaultPrompts()))}
+            preview={buildPrompt({
+              prompts: settings.prompts,
+              personas: settings.personas,
+              topic: topic?.trim() || 'your topic',
+              transcript: [],
+              phases: [{ key: 'opening', lineRef: settings.conversation.batchSize > 1 ? 'Line 1' : 'This line' }],
+              mode: settings.conversation.mode,
+              host: hostOf(settings, 'meeting'),
+              count: settings.conversation.batchSize,
+            })}
+          />
+        </section>
+            </>
+          )}
+
+          {tab === 'tools' && <ToolsSettings settings={settings} update={update} />}
+
+          {tab === 'connection' && (
+            <>
+        <section>
+          <h3>Connection</h3>
+          <Segmented
+            label="Connection"
+            value={settings.connection}
+            options={[
+              ['proxy', 'Proxy on this site'],
+              ['worker', 'Cloudflare Worker'],
+              ['direct', 'Direct'],
+            ]}
+            onChange={(v) => {
+              touchVoices()
+              update((s) => (s.connection = v))
+            }}
+          />
+          {settings.connection === 'worker' && (
+            <Field label="Worker URL" hint="For example https://team-room.your-name.workers.dev. Add this site to ALLOWED_ORIGINS in worker/wrangler.toml.">
+              <input value={settings.workerUrl} placeholder="https://…workers.dev" onChange={(e) => update((s) => (s.workerUrl = e.target.value))} spellCheck={false} />
+            </Field>
+          )}
+          <p className="fine">
+            {settings.connection === 'proxy'
+              ? 'Calls go to /proxy on this site: the Vite dev server when you run it locally, or the Cloudflare Worker when the site is deployed on it. No CORS problems with any provider.'
+              : settings.connection === 'worker'
+                ? 'Calls go through your Cloudflare Worker at another address. Your keys stay in this browser and the Worker only relays them. Ollama is not reachable from a Worker.'
+                : 'The browser calls each API itself, so it also works as a plain static site. Some providers block direct browser calls (CORS). If you see a "couldn’t reach" error, use a proxy instead. Ollama needs OLLAMA_ORIGINS="*" in this mode.'}
+          </p>
+        </section>
+            </>
+          )}
+        </div>
       </aside>
     </div>
   )

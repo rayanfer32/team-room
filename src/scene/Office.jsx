@@ -186,52 +186,125 @@ function wrapText(g, text, maxWidth) {
   return lines
 }
 
-function useBoardTexture(topic) {
+const BOARD_W = 1280
+const BOARD_H = 750
+const INK = { title: '#1f2a24', label: '#2d5b8a', decisions: '#2f7f4f', actions: '#2d5b8a', questions: '#c4682a', muted: '#8a8f8a', red: '#c44d3a' }
+const FONT = "'Bricolage Grotesque', sans-serif"
+
+function drawList(g, title, color, items, x, y, w, maxY) {
+  g.fillStyle = color
+  g.font = `700 30px ${FONT}`
+  g.fillText(title, x, y)
+  g.fillRect(x, y + 10, Math.min(w, g.measureText(title).width), 4)
+  let cy = y + 50
+  g.font = `500 24px ${FONT}`
+  for (const it of items) {
+    const lines = wrapText(g, it, w - 26)
+    if (cy + lines.length * 30 > maxY) {
+      g.fillStyle = INK.muted
+      g.fillText('…', x, cy)
+      break
+    }
+    g.fillStyle = color
+    g.beginPath()
+    g.arc(x + 7, cy - 8, 5, 0, Math.PI * 2)
+    g.fill()
+    g.fillStyle = INK.title
+    lines.forEach((l, i) => g.fillText(l, x + 22, cy + i * 30))
+    cy += lines.length * 30 + 12
+  }
+}
+
+function drawStickies(g) {
+  const notes = ['#f6d365', '#9ee0b4', '#f7a8b8', '#a8c8f7', '#f6d365', '#9ee0b4']
+  notes.forEach((c, i) => {
+    const x = 960 + (i % 2) * 130
+    const y = 80 + Math.floor(i / 2) * 160
+    g.save()
+    g.translate(x + 55, y + 55)
+    g.rotate((((i * 37) % 9) - 4) * 0.02)
+    g.fillStyle = c
+    g.fillRect(-55, -55, 110, 110)
+    g.fillStyle = 'rgba(0,0,0,0.35)'
+    for (let k = 0; k < 3; k++) g.fillRect(-40, -28 + k * 22, 60 + ((i + k) % 3) * 8, 5)
+    g.restore()
+  })
+}
+
+/** Draws the live whiteboard: topic, agenda or interview progress, and the decisions/actions/questions. */
+function useBoardTexture(view) {
   const { canvas, texture } = useMemo(() => {
     const canvas = document.createElement('canvas')
-    canvas.width = 1024
-    canvas.height = 600
+    canvas.width = BOARD_W
+    canvas.height = BOARD_H
     const texture = new THREE.CanvasTexture(canvas)
     texture.colorSpace = THREE.SRGBColorSpace
-    texture.anisotropy = 4
+    texture.anisotropy = 8
     return { canvas, texture }
   }, [])
+  const key = JSON.stringify(view)
   useEffect(() => {
     const draw = () => {
       const g = canvas.getContext('2d')
       g.fillStyle = '#f7f8f4'
-      g.fillRect(0, 0, 1024, 600)
-      g.fillStyle = '#2d5b8a'
-      g.font = "600 44px 'Bricolage Grotesque', sans-serif"
-      g.fillText('Today', 60, 90)
-      g.fillStyle = '#1f2a24'
-      g.font = "700 64px 'Bricolage Grotesque', sans-serif"
-      const lines = wrapText(g, topic || 'Pick a topic to start the meeting', 640).slice(0, 5)
-      lines.forEach((l, i) => g.fillText(l, 60, 180 + i * 76))
-      g.strokeStyle = '#c44d3a'
-      g.lineWidth = 6
+      g.fillRect(0, 0, BOARD_W, BOARD_H)
+      const pad = 56
+      const interview = view.kind === 'interview'
+      g.fillStyle = INK.label
+      g.font = `600 30px ${FONT}`
+      g.fillText(interview ? 'Mock interview' : 'Today', pad, 70)
+      g.fillStyle = INK.title
+      g.font = `700 50px ${FONT}`
+      const titleLines = wrapText(g, view.title || (interview ? 'Set the role to start' : 'Pick a topic to start the meeting'), BOARD_W - pad * 2 - (view.board || view.agenda || view.interview ? 0 : 300)).slice(0, 2)
+      titleLines.forEach((l, i) => g.fillText(l, pad, 130 + i * 58))
+      let top = 130 + titleLines.length * 58
+      g.strokeStyle = INK.red
+      g.lineWidth = 5
       g.beginPath()
-      g.moveTo(60, 200 + lines.length * 76 - 50)
-      g.lineTo(380, 200 + lines.length * 76 - 56)
+      g.moveTo(pad, top - 30)
+      g.lineTo(pad + 300, top - 36)
       g.stroke()
-      const notes = ['#f6d365', '#9ee0b4', '#f7a8b8', '#a8c8f7', '#f6d365', '#9ee0b4']
-      notes.forEach((c, i) => {
-        const x = 760 + (i % 2) * 120
-        const y = 60 + Math.floor(i / 2) * 150
-        g.save()
-        g.translate(x + 50, y + 50)
-        g.rotate(((i * 37) % 9 - 4) * 0.02)
-        g.fillStyle = c
-        g.fillRect(-50, -50, 100, 100)
-        g.fillStyle = 'rgba(0,0,0,0.35)'
-        for (let k = 0; k < 3; k++) g.fillRect(-36, -26 + k * 20, 56 + ((i + k) % 3) * 8, 5)
-        g.restore()
-      })
+      top += 20
+
+      const board = view.board
+      const hasBoard = board && (board.decisions.length || board.actions.length || board.questions.length)
+      let x = pad
+      const bottom = BOARD_H - 40
+
+      if (interview && view.interview?.questions) {
+        const { questions, asked } = view.interview
+        drawList(
+          g,
+          `Questions (${Math.min(asked, questions.length)} of ${questions.length})`,
+          INK.label,
+          questions.slice(0, Math.max(1, asked)).map((q, i) => (i + 1 === asked ? `Now: ${q}` : q)),
+          pad,
+          top + 10,
+          BOARD_W - pad * 2,
+          bottom,
+        )
+      } else if (!interview) {
+        const columns = []
+        if (view.agenda) columns.push(['Agenda', INK.label, view.agenda.items.map((it, i) => (i === view.agenda.index ? `Now: ${it}` : i < view.agenda.index ? `Done: ${it}` : it))])
+        if (hasBoard) {
+          columns.push(['Decisions', INK.decisions, board.decisions])
+          columns.push(['Action items', INK.actions, board.actions.map((a) => (a.owner ? `${a.task} (${a.owner})` : a.task))])
+          columns.push(['Open questions', INK.questions, board.questions])
+        }
+        if (columns.length) {
+          const w = (BOARD_W - pad * 2 - (columns.length - 1) * 30) / columns.length
+          for (const [title, color, items] of columns) {
+            drawList(g, title, color, items.length ? items : ['Nothing yet'], x, top + 10, w, bottom)
+            x += w + 30
+          }
+        } else drawStickies(g)
+      } else drawStickies(g)
       texture.needsUpdate = true
     }
     draw()
     document.fonts?.ready.then(draw)
-  }, [topic, canvas, texture])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, canvas, texture])
   return texture
 }
 
@@ -402,8 +475,8 @@ function Bookshelf({ position }) {
   )
 }
 
-function Whiteboard({ topic }) {
-  const tex = useBoardTexture(topic)
+function Whiteboard({ view }) {
+  const tex = useBoardTexture(view)
   return (
     <group position={[-6.86, 2.1, 1.7]} rotation={[0, Math.PI / 2, 0]}>
       <mesh castShadow>
@@ -618,13 +691,13 @@ export function MeetingTable({ seatsList, radius = 1.6 }) {
   )
 }
 
-export default function Office({ topic, tableR }) {
+export default function Office({ boardView, tableR }) {
   return (
     <group>
       <Floor tableR={tableR} />
       <Walls />
       <Bookshelf position={[-6.65, 0, -3.6]} />
-      <Whiteboard topic={topic} />
+      <Whiteboard view={boardView} />
       <Sofa position={[4.4, 0, -6.1]} />
       <SideTable position={[2.7, 0, -6.2]} />
       <FloorLamp position={[6.2, 0, -6.3]} />
